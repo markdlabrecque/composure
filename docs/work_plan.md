@@ -20,16 +20,33 @@ Build the bullets within each phase in order unless their dependencies are alrea
 - Use a real SQLite database and real filesystem in integration checks. Use a local SMTP capture service for account email. Production credentials and a live mail relay are not needed for routine tests.
 - Check the successful path and its most consequential failure or permission boundary. Verify persistence after restart where relevant, and check the public response when an action affects publication.
 - Keep automated acceptance checks runnable from one documented command. Use focused integration tests for rules and browser tests for critical interface journeys; avoid repeating every field combination through the browser.
-- A bullet is complete when the integrated path works, its checks pass, and its demonstration and limitations are recorded. A mock screen, isolated storage layer or stubbed publishing response is not a completed bullet.
+- A bullet is complete when the integrated path works, its checks pass, its PR has merged, and the orchestrator has posted the completion summary and closed its ticket. A mock screen, isolated storage layer or stubbed publishing response is not a completed bullet.
 - Thin initial implementations are allowed, but record the remaining PRD scope and assign it to a later bullet. No stub or temporary bypass may satisfy a v1 acceptance condition. The phase 1 prototype remains local until phase 2 access controls pass review.
 
 The bullets below are delivery boundaries, not a complete task backlog. Split any bullet that cannot be demonstrated independently in a short implementation cycle, while retaining an entry point and observable result in every split.
+
+## Merge and ticket completion
+
+The orchestrator owns this sequence for every work ticket, including documentation and CI tickets. A reviewer or reporter may prepare evidence, but the orchestrator posts the final summary and closes the issue.
+
+Work tickets strictly in serial. Finish testing, implementation, review, CI, merge, the summary comment and issue closure before starting the next ticket. Phase 1 order is #14, #2, #3, #4, #5, #6, #7, #8, #9, #10, #11, #12, #13. Keep a durable checkpoint of the current ticket, stage, worktree, revision and next action.
+
+1. Confirm dependencies are merged. Dispatch a Luna test writer, a separate Luna implementor and a stronger independent reviewer as prescribed by the ticket. Documentation-only tickets use their specified author/reviewer validation route.
+2. Open a PR that references the issue with `Refs #<number>`. Keep the issue open through implementation and review. Avoid closing keywords and automatic closing links so GitHub cannot close the issue before the summary is posted.
+3. Resolve review findings and obtain stronger-agent approval of the candidate diff and tests. The orchestrator then enables PR auto-merge. Required CI checks must pass for the current candidate against the current base before GitHub merges it. New code or base changes invalidate stale approval/evidence and return through review and the applicable checks. Do not bypass failing or missing required checks.
+4. The orchestrator follows the PR through CI and auto-merge. A green run or an enabled auto-merge flag is not proof of a merge. Confirm GitHub reports the PR as merged into `main`, and record its merge commit plus the CI-tested revision. If multiple PRs are needed for the ticket, wait for all required work to merge.
+5. After the merge is confirmed, the orchestrator posts a completion summary as a comment on the original issue. Include what changed, acceptance-criteria coverage, local test commands/results, CI run links and tested revision, stronger-review outcome, merged PR link and merge commit, and any remaining limitations or separately tracked follow-ups. Unfinished acceptance criteria keep the ticket open.
+6. Verify the summary comment exists, then close the issue as completed and update its checkbox in the phase tracker. If posting the comment fails, leave the issue open and retry. When resuming interrupted work, check for an existing summary for the merge commit to avoid duplicate comments. Only then mark the ticket finished and dispatch work that depends on it.
+
+The phase tracker closes only after all its work tickets have completed this sequence and the phase acceptance evidence is recorded. The orchestrator posts a phase summary before closing the tracker too.
+
+CI setup comes first. [Issue #14](https://github.com/markdlabrecque/composure/issues/14) establishes the workflow, required status check and repository auto-merge setting before other phase 1 PRs merge. It starts with real checks for the documents and runner that exist; [issue #4](https://github.com/markdlabrecque/composure/issues/4) activates the Go build/test checks when the application is introduced, and [issue #13](https://github.com/markdlabrecque/composure/issues/13) adds the browser gate. The bootstrap CI PR must itself pass its required checks and use auto-merge. Missing application or browser tests must never be reported as passing tests.
 
 ## Phase 1. Prove the foundation and publishing model
 
 Outcome: A local Go application persists and renders one example Page, proving the proposed stack and the separation between draft and published content.
 
-- Establish the Go application, SQLite migrations and data access boundaries, server-rendered templates, local startup, and basic test checks.
+- Establish CI and auto-merge first, then the Go application, SQLite migrations and data access boundaries, server-rendered templates, local startup, and basic test checks.
 - Define stable IDs, configuration versions, working drafts, immutable publish snapshots, URL ownership, relationships, and file references. Include menu publication and Trash in the model before building their screens.
 - Sketch the shared admin layout and the create, edit, preview, and publish journey. Choose the small amount of browser enhancement needed for responsive forms within the Go architecture.
 - Prove one local example Page can be saved, previewed, and published. This is an internal prototype until phase 2 supplies access controls.
@@ -185,4 +202,4 @@ Keep scheduled publishing, a reusable media library, event sourcing and formal W
 
 ## Immediate next step
 
-Start with phase 1, bullet 1: initialize a site, persist a Page and render it through a real HTTP request. Define that acceptance check first, then build only the code needed to pass it. Expand through the remaining phase 1 bullets before estimating the rest of the build.
+Start with the CI and auto-merge prerequisite in issue #14, then the shared contracts. Continue with phase 1, bullet 1: initialize a site, persist a Page and render it through a real HTTP request. Define that acceptance check first, then build only the code needed to pass it. Expand through the remaining phase 1 bullets before estimating the rest of the build.
