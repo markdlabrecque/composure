@@ -1,0 +1,131 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Resolve this file's directory with Bash built-ins so the runner does not
+# depend on dirname, realpath, or other utilities that may not be installed.
+script_path=${BASH_SOURCE[0]}
+script_dir=${script_path%/*}
+if [[ "$script_dir" == "$script_path" ]]; then
+  script_dir=.
+fi
+if ! repo_root=$(cd -- "$script_dir/.." && pwd -P); then
+  echo "scripts/test: cannot locate the repository from $script_path" >&2
+  exit 2
+fi
+
+if ! command -v python3 >/dev/null 2>&1; then
+  echo "scripts/test: Python 3 is required for repository checks" >&2
+  exit 2
+fi
+
+exec python3 - "$repo_root" <<'PYTHON'
+from __future__ import annotations
+
+import json
+import os
+from pathlib import Path
+import re
+import shutil
+import subprocess
+import sys
+
+
+root = Path(sys.argv[1])
+required_docs = ("prd.md", "architecture_plan.md", "work_plan.md")
+errors: list[str] = []
+
+for name in required_docs:
+    path = root / "docs" / name
+    if not path.is_file():
+        errors.append(f"required document is missing: docs/{name}")
+        continue
+    try:
+        if not path.read_text(encoding="utf-8").strip():
+            errors.append(f"required document is empty: docs/{name}")
+    except (OSError, UnicodeError) as exc:
+        errors.append(f"cannot read docs/{name}: {exc}")
+
+examples = root / "docs" / "phase1" / "examples"
+if examples.exists():
+    if not examples.is_dir():
+        errors.append("docs/phase1/examples exists but is not a directory")
+    else:
+        for path in sorted(examples.rglob("*.json")):
+            try:
+                with path.open(encoding="utf-8") as stream:
+                    json.load(stream)
+            except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+                errors.append(f"invalid JSON in {path.relative_to(root)}: {exc}")
+
+go_sources: list[Path] = []
+for directory, subdirectories, filenames in os.walk(root):
+    subdirectories[:] = [name for name in subdirectories if name != ".git"]
+    if any(filename.endswith(".go") for filename in filenames):
+        go_sources.extend(Path(directory) / filename for filename in filenames if filename.endswith(".go"))
+
+module_file = root / "go.mod"
+has_module = module_file.is_file()
+module_is_valid = False
+if has_module:
+    try:
+        contents = module_file.read_text(encoding="utf-8")
+        module_is_valid = any(
+            re.fullmatch(r"\s*module\s+\S+\s*(?://.*)?", line)
+            for line in contents.splitlines()
+        )
+    except (OSError, UnicodeError):
+        module_is_valid = False
+
+if go_sources and not has_module:
+    errors.append("Go source exists but root go.mod is missing")
+elif has_module and not module_is_valid:
+    errors.append("root go.mod is missing a valid module directive")
+
+application_mode = has_module and module_is_valid
+if application_mode:
+    tests = [path for path in go_sources if path.name.endswith("_test.go")]
+    if not tests:
+        errors.append("Go module exists but no *_test.go files were found")
+
+if errors:
+    for error in errors:
+        print(f"scripts/test: {error}", file=sys.stderr)
+    raise SystemExit(1)
+
+if application_mode:
+    print("Go application checks (build, vet, tests, and race tests)", flush=True)
+else:
+    print("Bootstrap checks (planning documents and optional example JSON)", flush=True)
+
+# Exercise the runner contract on every local/CI run once those tests have
+# landed. Fixture repositories intentionally omit tests/ to prevent recursion.
+runner_tests = root / "tests" / "test_runner.py"
+if runner_tests.is_file():
+    print("Runner contract tests", flush=True)
+    result = subprocess.run(
+        [sys.executable, "-m", "unittest", "discover", "-s", "tests", "-v"],
+        cwd=root,
+        check=False,
+    )
+    if result.returncode:
+        raise SystemExit(result.returncode)
+
+if not application_mode:
+    raise SystemExit(0)
+
+go = shutil.which("go")
+if go is None:
+    print("scripts/test: Go is required when go.mod is present", file=sys.stderr)
+    raise SystemExit(2)
+
+for arguments in (
+    ("build", "./..."),
+    ("vet", "./..."),
+    ("test", "./..."),
+    ("test", "-race", "./..."),
+):
+    print(f"go {' '.join(arguments)}", flush=True)
+    result = subprocess.run([go, *arguments], cwd=root, check=False)
+    if result.returncode:
+        raise SystemExit(result.returncode)
+PYTHON
