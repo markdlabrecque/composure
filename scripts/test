@@ -59,9 +59,22 @@ if examples.exists():
 
 go_sources: list[Path] = []
 for directory, subdirectories, filenames in os.walk(root):
-    subdirectories[:] = [name for name in subdirectories if name != ".git"]
-    if any(filename.endswith(".go") for filename in filenames):
-        go_sources.extend(Path(directory) / filename for filename in filenames if filename.endswith(".go"))
+    current = Path(directory)
+    if current != root and (current / "go.mod").is_file():
+        # `go list ./...` does not cross into a nested module.
+        subdirectories.clear()
+        continue
+
+    subdirectories[:] = [
+        name for name in subdirectories
+        if name != "vendor"
+        and name != "testdata"
+        and not name.startswith(".")
+        and not name.startswith("_")
+    ]
+    go_sources.extend(
+        current / filename for filename in filenames if filename.endswith(".go")
+    )
 
 module_file = root / "go.mod"
 has_module = module_file.is_file()
@@ -82,19 +95,13 @@ elif has_module and not module_is_valid:
     errors.append("root go.mod is missing a valid module directive")
 
 application_mode = has_module and module_is_valid
-if application_mode:
-    tests = [path for path in go_sources if path.name.endswith("_test.go")]
-    if not tests:
-        errors.append("Go module exists but no *_test.go files were found")
 
 if errors:
     for error in errors:
         print(f"scripts/test: {error}", file=sys.stderr)
     raise SystemExit(1)
 
-if application_mode:
-    print("Go application checks (build, vet, tests, and race tests)", flush=True)
-else:
+if not application_mode:
     print("Bootstrap checks (planning documents and optional example JSON)", flush=True)
 
 # Exercise the runner contract on every local/CI run once those tests have
@@ -117,6 +124,71 @@ go = shutil.which("go")
 if go is None:
     print("scripts/test: Go is required when go.mod is present", file=sys.stderr)
     raise SystemExit(2)
+
+list_result = subprocess.run(
+    [go, "list", "-json", "./..."],
+    cwd=root,
+    capture_output=True,
+    text=True,
+    check=False,
+)
+if list_result.returncode:
+    print(
+        f"scripts/test: go list -json ./... failed with exit code {list_result.returncode}",
+        file=sys.stderr,
+    )
+    if list_result.stdout:
+        end = "" if list_result.stdout.endswith("\n") else "\n"
+        print(list_result.stdout, end=end, file=sys.stderr)
+    if list_result.stderr:
+        end = "" if list_result.stderr.endswith("\n") else "\n"
+        print(list_result.stderr, end=end, file=sys.stderr)
+    raise SystemExit(list_result.returncode)
+
+
+def validate_go_package_stream(output: str) -> None:
+    decoder = json.JSONDecoder()
+    packages: list[dict[str, object]] = []
+    offset = 0
+    while True:
+        while offset < len(output) and output[offset].isspace():
+            offset += 1
+        if offset == len(output):
+            break
+        package, offset = decoder.raw_decode(output, offset)
+        if not isinstance(package, dict):
+            raise ValueError("package metadata record must be a JSON object")
+        packages.append(package)
+
+    if not packages:
+        raise ValueError("go list returned no package metadata")
+
+    has_tests = False
+    for package in packages:
+        import_path = package.get("ImportPath")
+        if not isinstance(import_path, str) or not import_path.strip():
+            raise ValueError("package metadata has no valid ImportPath")
+        for field in ("TestGoFiles", "XTestGoFiles"):
+            filenames = package.get(field, [])
+            if not isinstance(filenames, list) or any(
+                not isinstance(filename, str) or not filename.strip()
+                for filename in filenames
+            ):
+                raise ValueError(
+                    f"package metadata field {field} must be an array of filenames"
+                )
+            has_tests = has_tests or bool(filenames)
+
+    if not has_tests:
+        raise ValueError("no eligible Go package has TestGoFiles or XTestGoFiles")
+
+try:
+    validate_go_package_stream(list_result.stdout)
+except (json.JSONDecodeError, ValueError) as exc:
+    print(f"scripts/test: invalid go list JSON metadata: {exc}", file=sys.stderr)
+    raise SystemExit(1)
+
+print("Go application checks (build, vet, tests, and race tests)", flush=True)
 
 for arguments in (
     ("build", "./..."),

@@ -222,6 +222,8 @@ class RunnerTests(unittest.TestCase):
 
                 go = self.fake_go()
                 log = self.root / "go calls.txt"
+                if log.exists():
+                    log.unlink()
                 env = {
                     "PATH": self.python_only_path(go=go),
                     "GO_CALL_LOG": str(log),

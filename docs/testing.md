@@ -6,9 +6,11 @@ contains only planning material, it checks the required documents and parses
 any JSON examples under `docs/phase1/examples/`.
 
 When a root `go.mod` is added, the runner switches to application checks. It
-requires at least one Go test file, then runs `go build ./...`, `go vet ./...`,
-`go test ./...`, and `go test -race ./...`. Go source without a valid root
-module fails instead of selecting bootstrap checks.
+first asks the selected Go toolchain for `go list -json ./...` metadata and
+requires at least one package with an active internal or external test file.
+It then runs `go build ./...`, `go vet ./...`, `go test ./...`, and
+`go test -race ./...`. Go source without a valid root module fails instead of
+selecting bootstrap checks.
 
 The CI workflow runs this same command for pull requests, pushes to `main`,
 and manual dispatch. Configure `Composure checks` as a required status check
