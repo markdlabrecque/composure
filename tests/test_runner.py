@@ -160,6 +160,47 @@ class RunnerTests(unittest.TestCase):
         self.assertIn("test", output.lower())
         self.assertNotIn("not implemented", output.lower())
 
+    def test_excluded_or_nested_go_tests_do_not_satisfy_root_test_setup(self) -> None:
+        excluded_tests = {
+            "vendor dependency tests": "vendor/example/dependency_test.go",
+            "nested module tests": "nested/dependency_test.go",
+            "testdata tests": "testdata/fixture_test.go",
+            "dot directory tests": ".hidden/fixture_test.go",
+            "underscore directory tests": "_hidden/fixture_test.go",
+        }
+        for label, relative_test in excluded_tests.items():
+            with self.subTest(location=label):
+                root = self.make_repo()
+                (root / "go.mod").write_text(
+                    "module example.test/composure\n\ngo 1.23\n", encoding="utf-8"
+                )
+                (root / "main.go").write_text("package main\nfunc main() {}\n", encoding="utf-8")
+                test_path = root / relative_test
+                test_path.parent.mkdir(parents=True, exist_ok=True)
+                test_path.write_text(
+                    "package fixture\nimport \"testing\"\n"
+                    "func TestFixture(t *testing.T) {}\n",
+                    encoding="utf-8",
+                )
+                if label == "nested module tests":
+                    (test_path.parent / "go.mod").write_text(
+                        "module example.test/nested\n\ngo 1.23\n", encoding="utf-8"
+                    )
+
+                go = self.fake_go()
+                log = self.root / "go calls.txt"
+                env = {
+                    "PATH": self.python_only_path(go=go),
+                    "GO_CALL_LOG": str(log),
+                    "FAIL_GO_COMMAND": "",
+                }
+                result = self.run_runner(root, env=env)
+                output = self.output(result)
+                self.assertNotEqual(result.returncode, 0, output)
+                self.assertIn("test", output.lower())
+                self.assertNotIn("Go application checks", output)
+                self.assertFalse(log.exists(), "runner invoked Go before rejecting missing root tests")
+
     def test_application_mode_runs_all_go_checks_without_needing_real_go(self) -> None:
         root = self.make_repo()
         self.add_go_application()
