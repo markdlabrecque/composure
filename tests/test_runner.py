@@ -78,11 +78,27 @@ class RunnerTests(unittest.TestCase):
             "#!/bin/sh\n"
             "printf '%s\\n' \"$*\" >> \"$GO_CALL_LOG\"\n"
             "if [ \"$*\" = \"$FAIL_GO_COMMAND\" ]; then exit 23; fi\n"
+            "if [ \"$*\" = \"list -json ./...\" ]; then\n"
+            "  printf '%s\\n' \"$FAKE_GO_LIST_OUTPUT\"\n"
+            "fi\n"
             "exit 0\n",
             encoding="utf-8",
         )
         go.chmod(0o755)
         return go
+
+    @staticmethod
+    def package_metadata(*, test_go_files: list[str] | None = None,
+                         x_test_go_files: list[str] | None = None) -> str:
+        import json
+
+        return json.dumps({
+            "ImportPath": "example.test/composure",
+            "Name": "main",
+            "GoFiles": ["main.go"],
+            "TestGoFiles": test_go_files or [],
+            "XTestGoFiles": x_test_go_files or [],
+        })
 
     def add_go_application(self, *, test_setup: bool = True) -> None:
         (self.root / "go.mod").write_text("module example.test/composure\n\ngo 1.23\n", encoding="utf-8")
@@ -154,11 +170,20 @@ class RunnerTests(unittest.TestCase):
     def test_go_module_without_test_setup_is_rejected(self) -> None:
         root = self.make_repo()
         self.add_go_application(test_setup=False)
-        result = self.run_runner(root)
+        go = self.fake_go()
+        log = self.root / "go calls.txt"
+        result = self.run_runner(root, env={
+            "PATH": self.python_only_path(go=go),
+            "GO_CALL_LOG": str(log),
+            "FAIL_GO_COMMAND": "",
+            "FAKE_GO_LIST_OUTPUT": self.package_metadata(),
+        })
         output = self.output(result)
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("test", output.lower())
-        self.assertNotIn("not implemented", output.lower())
+        self.assertNotIn("Go application checks", output)
+        calls = log.read_text(encoding="utf-8").splitlines() if log.exists() else []
+        self.assertEqual(calls, ["list -json ./..."])
 
     def test_excluded_or_nested_go_tests_do_not_satisfy_root_test_setup(self) -> None:
         excluded_tests = {
@@ -167,6 +192,8 @@ class RunnerTests(unittest.TestCase):
             "testdata tests": "testdata/fixture_test.go",
             "dot directory tests": ".hidden/fixture_test.go",
             "underscore directory tests": "_hidden/fixture_test.go",
+            "ignored suffix tests": "_ignored_test.go",
+            "build-tag-ineligible tests": "tagged_test.go",
         }
         for label, relative_test in excluded_tests.items():
             with self.subTest(location=label):
@@ -182,6 +209,12 @@ class RunnerTests(unittest.TestCase):
                     "func TestFixture(t *testing.T) {}\n",
                     encoding="utf-8",
                 )
+                if label == "build-tag-ineligible tests":
+                    test_path.write_text(
+                        "//go:build never_enabled\n\npackage main\n"
+                        "import \"testing\"\nfunc TestFixture(t *testing.T) {}\n",
+                        encoding="utf-8",
+                    )
                 if label == "nested module tests":
                     (test_path.parent / "go.mod").write_text(
                         "module example.test/nested\n\ngo 1.23\n", encoding="utf-8"
@@ -193,13 +226,19 @@ class RunnerTests(unittest.TestCase):
                     "PATH": self.python_only_path(go=go),
                     "GO_CALL_LOG": str(log),
                     "FAIL_GO_COMMAND": "",
+                    "FAKE_GO_LIST_OUTPUT": self.package_metadata(),
                 }
                 result = self.run_runner(root, env=env)
                 output = self.output(result)
                 self.assertNotEqual(result.returncode, 0, output)
                 self.assertIn("test", output.lower())
                 self.assertNotIn("Go application checks", output)
-                self.assertFalse(log.exists(), "runner invoked Go before rejecting missing root tests")
+                calls = log.read_text(encoding="utf-8").splitlines() if log.exists() else []
+                self.assertEqual(
+                    calls,
+                    ["list -json ./..."],
+                    "runner should query package metadata, then reject before build/vet/test/race",
+                )
 
     def test_application_mode_runs_all_go_checks_without_needing_real_go(self) -> None:
         root = self.make_repo()
@@ -210,17 +249,18 @@ class RunnerTests(unittest.TestCase):
             "PATH": self.python_only_path(go=go),
             "GO_CALL_LOG": str(log),
             "FAIL_GO_COMMAND": "",
+            "FAKE_GO_LIST_OUTPUT": self.package_metadata(test_go_files=["main_test.go"]),
         }
         result = self.run_runner(root, env=env)
         self.assertEqual(result.returncode, 0, self.output(result))
         self.assertIn("Go", self.output(result))
         self.assertEqual(
             log.read_text(encoding="utf-8").splitlines(),
-            ["build ./...", "vet ./...", "test ./...", "test -race ./..."],
+            ["list -json ./...", "build ./...", "vet ./...", "test ./...", "test -race ./..."],
         )
 
     def test_each_go_check_failure_reaches_caller_and_stops_later_checks(self) -> None:
-        expected = ["build ./...", "vet ./...", "test ./...", "test -race ./..."]
+        expected = ["list -json ./...", "build ./...", "vet ./...", "test ./...", "test -race ./..."]
         for failed in expected:
             with self.subTest(failed=failed):
                 root = self.make_repo()
@@ -233,6 +273,7 @@ class RunnerTests(unittest.TestCase):
                     "PATH": self.python_only_path(go=go),
                     "GO_CALL_LOG": str(log),
                     "FAIL_GO_COMMAND": failed,
+                    "FAKE_GO_LIST_OUTPUT": self.package_metadata(test_go_files=["main_test.go"]),
                 })
                 self.assertEqual(result.returncode, 23, self.output(result))
                 self.assertEqual(log.read_text(encoding="utf-8").splitlines(), expected[:expected.index(failed) + 1])
@@ -245,6 +286,58 @@ class RunnerTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("go", output.lower())
         self.assertNotIn("not implemented", output.lower())
+
+    def test_external_test_package_metadata_satisfies_root_test_setup(self) -> None:
+        root = self.make_repo()
+        (root / "go.mod").write_text("module example.test/composure\n\ngo 1.23\n", encoding="utf-8")
+        (root / "main.go").write_text("package main\nfunc main() {}\n", encoding="utf-8")
+        (root / "external_test.go").write_text("package main_test\n", encoding="utf-8")
+        go = self.fake_go()
+        log = self.root / "go calls.txt"
+        result = self.run_runner(root, env={
+            "PATH": self.python_only_path(go=go),
+            "GO_CALL_LOG": str(log),
+            "FAIL_GO_COMMAND": "",
+            "FAKE_GO_LIST_OUTPUT": self.package_metadata(x_test_go_files=["external_test.go"]),
+        })
+        self.assertEqual(result.returncode, 0, self.output(result))
+        self.assertIn("Go application checks", self.output(result))
+        self.assertEqual(
+            log.read_text(encoding="utf-8").splitlines(),
+            ["list -json ./...", "build ./...", "vet ./...", "test ./...", "test -race ./..."],
+        )
+
+    def test_go_list_failure_propagates_before_build_checks(self) -> None:
+        root = self.make_repo()
+        self.add_go_application()
+        go = self.fake_go()
+        log = self.root / "go calls.txt"
+        result = self.run_runner(root, env={
+            "PATH": self.python_only_path(go=go),
+            "GO_CALL_LOG": str(log),
+            "FAIL_GO_COMMAND": "list -json ./...",
+            "FAKE_GO_LIST_OUTPUT": self.package_metadata(test_go_files=["main_test.go"]),
+        })
+        self.assertEqual(result.returncode, 23, self.output(result))
+        self.assertEqual(log.read_text(encoding="utf-8").splitlines(), ["list -json ./..."])
+        self.assertNotIn("Go application checks", self.output(result))
+
+    def test_malformed_go_list_metadata_fails_before_build_checks(self) -> None:
+        root = self.make_repo()
+        self.add_go_application()
+        go = self.fake_go()
+        log = self.root / "go calls.txt"
+        result = self.run_runner(root, env={
+            "PATH": self.python_only_path(go=go),
+            "GO_CALL_LOG": str(log),
+            "FAIL_GO_COMMAND": "",
+            "FAKE_GO_LIST_OUTPUT": "{ malformed metadata",
+        })
+        output = self.output(result)
+        self.assertNotEqual(result.returncode, 0, output)
+        self.assertIn("json", output.lower())
+        self.assertNotIn("Go application checks", output)
+        self.assertEqual(log.read_text(encoding="utf-8").splitlines(), ["list -json ./..."])
 
     def test_missing_python_tool_fails_in_bootstrap_mode(self) -> None:
         root = self.make_repo()
