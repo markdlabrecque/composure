@@ -48,7 +48,7 @@ file:<site>/composure.db?mode=rw
   &_pragma=synchronous(FULL)
 ```
 
-- `mode=rw` makes a missing file an error, so startup never creates an empty replacement database.
+- `mode=rw` makes a missing file an error, so startup never creates an empty replacement database. `init` is the one exception: it builds `composure.db.init-<random>` with the same pragmas but file creation enabled, because that file does not exist yet (section 8).
 - `_txlock=immediate` makes every `BeginTx` a `BEGIN IMMEDIATE`, so a write transaction holds the write lock before it reads; concurrent saves serialize instead of deadlocking.
 - `journal_mode=WAL` is set once by `init` and persists in the file; startup reads `PRAGMA journal_mode` and fails if it is not `wal` (section 8).
 
@@ -235,7 +235,7 @@ Publish always publishes the **stored** draft, never unsaved form values. If the
 
 ### Worked transitions
 
-Fixed clock and IDs for readability. The item is `itm_01`; content version **A** (body `Hello`) is first published as snapshot `snp_01`, and the edited version **B** (body `Hello again`) as `snp_02`.
+Fixed clock and shortened IDs for readability; real IDs are unprefixed UUIDv7 (section 5). The item is `itm_01`; content version **A** (body `Hello`) is first published as snapshot `snp_01`, and the edited version **B** (body `Hello again`) as `snp_02`.
 
 **New draft** (Create: title `About`, path `about`, body `Hello`)
 
@@ -431,7 +431,7 @@ Other rules:
 
 **Unpublish and path ownership (phase 3 and 5).** Unpublish sets `published_snapshot_id` to NULL and keeps every snapshot. An unpublished or trashed item keeps its `routes` row, so its path stays reserved and republishing cannot hit a conflict; the public route returns `404` while no snapshot is published. The reservation ends on permanent deletion or a path change.
 
-**Redirects and reserved sources (phase 5).** Redirect rules are `routes` rows with `kind = 'redirect'`, so a redirect source and an item path can never coincide; the phase 5 migration widens the `kind` check and scopes the `item_id` uniqueness to `kind = 'item'` rows. An enabled redirect reserves its source even while suspended (FR-17). A published path change moves the item's route to the new path and creates a permanent redirect row from the old path, in one transaction. Until phase 5 ships, a published path change is rejected with `path_change_unsupported` (section 9). When a reserved path blocks an editor, the error names the rule or item that holds it.
+**Redirects and reserved sources (phase 5).** Redirect rules are `routes` rows with `kind = 'redirect'`, so a redirect source and an item path can never coincide; the phase 5 migration widens the `kind` check and scopes the `item_id` uniqueness to `kind = 'item'` rows. An enabled redirect reserves its source even while suspended: a redirect whose target item is unpublished or trashed is suspended, and republication resumes it unless the editor manually disabled the rule (FR-17). A published path change moves the item's route to the new path and creates a permanent redirect row from the old path, in one transaction. Until phase 5 ships, a published path change is rejected with `path_change_unsupported` (section 9). When a reserved path blocks an editor, the error names the rule or item that holds it.
 
 ## 11. Worked examples and future tests
 
@@ -443,7 +443,7 @@ Each example names the executable test that must prove it and the ticket or phas
 | E2 | Draft isolation | Create a Page at `/about`; `GET /about` → `404`; preview → `200`; `routes` and `snapshots` empty. Publish A; save draft B; preview shows B; `GET /about` still shows A. | `TestDraftOnlyPageIsNotPublic` (#6), `TestPreviewShowsDraftNotPublic` (#8), `TestDraftSaveKeepsPublicVersion` (#10) | #6, #8, #10 |
 | E3 | Republish | Publish A; save B; publish B → public B, snapshots `seq 1` (A) and `seq 2` (B); snapshot 1 unchanged byte for byte; restart keeps both. | `TestRepublishAddsSnapshotAndKeepsHistory` | #10 |
 | E4 | Duplicate path | Page X published at `/about`. Create Page Y with path `About/` → normalizes to `/about` → `409 path_taken` naming X; no row added. Separately, two drafts both propose `/contact`; the first to publish wins, the second gets `409 path_taken` and keeps its draft. | `TestCreateRejectsPathOwnedByAnotherItem` (#6), `TestPublishRejectsTakenPathAtomically` (#9) | #6, #9 |
-| E5 | Blocked published-path edit | Page published at `/about`; save with path `/about-us` → `422 path_change_unsupported`; the form keeps `/about-us` and other entered text; the stored draft, route, and public page are unchanged. | `TestPublishedPathChangeRejected` | #10 |
+| E5 | Blocked published-path edit | Page published at `/about`; save with path `/about-us` → `422 path_change_unsupported`; the form keeps `/about-us` and other entered text; the stored draft, route, and public page are unchanged. | `TestPublishedPathChangeRejected` | #7, #9 |
 | E6 | Incompatible version | On a copy of a site, set `user_version` to `2`; `serve` exits `4` with the "newer than supported" message and nothing listens; the file bytes are unchanged. Repeat for `0` and for `config_format_version` `2`. | `TestServeRejectsUnsupportedSchemaVersion`, `TestServeRejectsUnsupportedConfigFormat` | #5 |
 | E7 | Snapshot restore after a missing relationship | Event E links Location L; publish E (snapshot holds L's ID); permanently delete L; restore E's snapshot → the draft lacks L's ID, the editor sees a warning naming the field; the snapshot still holds L's ID; public E is unchanged until publish. | `TestRestoreOmitsDeletedReferenceAndWarns` | Phase 5, bullet 4 |
 | E8 | Retained files in Trash | A Page with image F is published; trash the Page → F is still stored and its references counted; restore → the Page is unpublished and F intact; permanently delete the item that is F's last reference → F is removed only after commit, and a failed deletion leaves F. | `TestTrashedItemRetainsFiles`, `TestOrphanRemovedOnlyAfterCommit` | Phase 4, bullet 3; phase 5, bullet 3 |
