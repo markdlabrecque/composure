@@ -1,0 +1,7 @@
+{
+  "title": "Example Page",
+  "path": "/example",
+  "fields": {
+    "body": "This is an example Page created by composure init. Edit or replace it in the admin."
+  }
+}
