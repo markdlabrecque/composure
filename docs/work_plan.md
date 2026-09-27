@@ -62,6 +62,8 @@ Exit evidence: A draft edit leaves the published Page unchanged; publishing repl
 
 Dependencies: None. Establishes the basis for FR-03, FR-05, FR-06, FR-08, FR-15, FR-16, and FR-18.
 
+Decisions: The [Page state, storage and runtime contract](phase1/content-contract.md) (P1-01) fixes the Go toolchain and SQLite driver, package boundaries, IDs, draft and snapshot states, URL ownership, version checks, the CLI and HTTP routes, and the later-phase rules for relationships, files, menus, Trash, and redirects.
+
 ## Phase 2. Secure access and establish the admin
 
 Outcome: Real users can enter the admin with the correct permissions, and sensitive actions have the required controls.
