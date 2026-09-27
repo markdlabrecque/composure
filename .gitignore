@@ -1,2 +1,9 @@
 __pycache__/
 *.py[cod]
+
+# Local model benchmark artifacts
+benchmarks/*/runs/
+benchmarks/*/review-packets/
+benchmarks/*/aliases.json
+benchmarks/*/report.md
+benchmarks/*/report.csv

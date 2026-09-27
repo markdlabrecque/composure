@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "score_scale": {
+    "minimum": 0,
+    "maximum": 5,
+    "anchors": {
+      "0": "Missing, unusable, or actively harmful.",
+      "1": "Major defects; substantial rework required.",
+      "2": "Partly works; important defects remain.",
+      "3": "Acceptable implementation with non-critical weaknesses.",
+      "4": "Strong implementation with only minor weaknesses.",
+      "5": "Complete, well-evidenced, and difficult to improve within the ticket scope."
+    }
+  },
+  "hard_gates": [
+    {
+      "id": "ticket_complete",
+      "description": "The requested behavior is present and the required acceptance checks pass. A partial implementation fails this gate."
+    },
+    {
+      "id": "no_critical_defect",
+      "description": "No known security, authorization, data-loss, corruption, privacy, or severe regression defect remains."
+    }
+  ],
+  "criteria": [
+    {
+      "id": "correctness",
+      "weight": 50,
+      "description": "Behavior matches the ticket, including consequential edge cases and failure paths. Base this on independent checks and code inspection, not the agent's claims."
+    },
+    {
+      "id": "regression_safety",
+      "weight": 15,
+      "description": "Existing behavior remains intact. The change handles compatibility, persistence, error propagation, and security boundaries relevant to its scope."
+    },
+    {
+      "id": "design_and_maintainability",
+      "weight": 15,
+      "description": "The implementation fits repository conventions, has clear boundaries, avoids needless complexity, and will be reasonable to change later."
+    },
+    {
+      "id": "tests",
+      "weight": 10,
+      "description": "Tests exercise externally meaningful behavior, important failure paths, and the regression. They would fail for a materially incomplete implementation."
+    },
+    {
+      "id": "scope_discipline",
+      "weight": 10,
+      "description": "The patch solves the ticket without unrelated rewrites, generated clutter, hidden bypasses, or changes that make review harder."
+    }
+  ]
+}
