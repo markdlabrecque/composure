@@ -1,6 +1,6 @@
 # Model benchmark framework
 
-This framework compares coding-agent runs made from the same Git revision. It does not launch agents or create worktrees. It captures their patches and Pi JSON events, runs independent checks, creates blind review packets, and joins quality reviews with cost and elapsed time.
+This framework compares coding-agent runs made from the same Git revision. It does not launch agents or create worktrees. It captures their patches and Pi or Claude Code transcripts, runs independent checks, creates blind review packets, and joins quality reviews with usage, available cost data, and elapsed time.
 
 ## Quality policy
 
@@ -40,7 +40,9 @@ Keep acceptance tests outside agent worktrees when they must remain hidden. Eval
 
 ### 2. Run each agent
 
-Start every run from the experiment's recorded baseline. Give each model the unchanged `ticket.md`, equivalent tools, a fresh session, and the same timeout. Capture Pi's structured output and wall time. One possible runner is:
+Start every run from the experiment's recorded baseline. Give each model the unchanged `ticket.md`, equivalent tools, a fresh session, and the same timeout.
+
+For Pi, capture structured output and process wall time:
 
 ```bash
 start=$(date +%s)
@@ -55,6 +57,20 @@ elapsed=$(($(date +%s) - start))
 
 Keep wall time external to Pi so it includes provider latency, tool execution, retries, and queueing.
 
+Claude Code can run normally in a fresh interactive session. Its persisted session transcript under `~/.claude/projects/<encoded-worktree-path>/<session-id>.jsonl` contains model usage and timestamps. End the session after the ticket rather than reusing it for unrelated work. The framework deduplicates Claude's repeated streaming snapshots by message ID.
+
+For more exact process duration and Claude's reported API-equivalent cost, run Claude non-interactively and retain its stream:
+
+```bash
+claude -p --output-format stream-json --verbose \
+  --model "$MODEL" \
+  --effort "$THINKING" \
+  "$(cat benchmarks/issue-42/ticket.md)" \
+  > "$TMPDIR/claude.jsonl"
+```
+
+A normal persisted Claude session does not contain a session-level USD cost. The framework records its tokens and marks cost as unavailable rather than reporting zero. Transcript-derived elapsed time includes human pauses and permission handling. Supply externally measured `--elapsed-seconds` when you need process wall time.
+
 ### 3. Collect each result
 
 The worktree may contain committed, staged, modified, deleted, or untracked files. Collection captures all non-ignored changes without altering its real Git index.
@@ -65,12 +81,24 @@ scripts/benchmark collect issue-42 \
   --model anthropic/claude-sonnet \
   --thinking high \
   --worktree /path/to/worktree \
-  --events "$TMPDIR/events.jsonl" \
+  --transcript "$TMPDIR/events.jsonl" \
   --elapsed-seconds "$elapsed" \
   --exit-code "$agent_status"
 ```
 
-Usage excludes cumulative streaming snapshots. It sums final assistant-message usage and standalone Pi usage events, including cache activity.
+The transcript format is detected automatically. Use `--source pi-json`, `--source claude-stream`, or `--source claude-session` only when detection is ambiguous. Pi usage excludes cumulative streaming snapshots. Claude session usage deduplicates assistant snapshots by message ID. `--elapsed-seconds` is optional when the transcript has timestamps or a duration.
+
+A normal Claude Code session can be collected after the fact:
+
+```bash
+scripts/benchmark collect issue-42 \
+  --run-id claude-opus-1 \
+  --model claude-opus \
+  --thinking high \
+  --worktree /path/to/worktree \
+  --transcript ~/.claude/projects/<worktree>/<session-id>.jsonl \
+  --exit-code 0
+```
 
 ### 4. Judge blind packets
 
@@ -92,8 +120,8 @@ This writes `report.md` and `report.csv`. Incomplete review templates fail close
 
 ## What the measurements mean
 
-- `cost.total` is Pi's provider-reported cost. Subscription-backed models may report zero. Record a separate list-price estimate if needed rather than overwriting the provider value.
-- `elapsed_seconds` is end-to-end agent wall time supplied during collection.
+- `cost.total` is Pi's or Claude stream mode's reported cost. Subscription-backed models may report zero. Persisted interactive Claude sessions have no session-level cost and report it as unavailable.
+- `elapsed_seconds` is supplied process wall time when provided. Otherwise it is Claude's reported duration or the span between transcript timestamps.
 - Token counts are diagnostic. They are not a fair budget across different tokenizers.
 - Automated check time is stored separately and excluded from agent elapsed time.
 - Parallel runs measure throughput under contention. Randomized sequential runs give cleaner provider-latency comparisons.

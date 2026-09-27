@@ -87,6 +87,106 @@ class UsageTests(unittest.TestCase):
                 benchmark.read_events(path)
 
 
+class ClaudeUsageTests(unittest.TestCase):
+    def test_persisted_claude_session_deduplicates_stream_snapshots(self) -> None:
+        usage = {
+            "input_tokens": 10,
+            "cache_creation_input_tokens": 20,
+            "cache_read_input_tokens": 30,
+            "output_tokens": 40,
+            "output_tokens_details": {"thinking_tokens": 7},
+        }
+        events = [
+            {
+                "type": "user",
+                "timestamp": "2026-01-01T00:00:00Z",
+                "message": {"role": "user", "content": "ticket"},
+            },
+            {
+                "type": "assistant",
+                "timestamp": "2026-01-01T00:00:02Z",
+                "message": {
+                    "id": "msg-1",
+                    "role": "assistant",
+                    "model": "claude-test",
+                    "usage": usage,
+                    "content": [{"type": "tool_use", "name": "Read"}],
+                },
+            },
+            {
+                "type": "assistant",
+                "timestamp": "2026-01-01T00:00:03Z",
+                "message": {
+                    "id": "msg-1",
+                    "role": "assistant",
+                    "model": "claude-test",
+                    "usage": usage,
+                    "content": [
+                        {"type": "tool_use", "name": "Read"},
+                        {"type": "text", "text": "done"},
+                    ],
+                },
+            },
+        ]
+
+        summary = benchmark.summarize_transcript(events, "auto")
+
+        self.assertEqual(summary["source"], "claude-session")
+        self.assertEqual(summary["tokens"], {
+            "input": 10,
+            "output": 40,
+            "cache_read": 30,
+            "cache_write": 20,
+            "reasoning": 7,
+            "total": 100,
+        })
+        self.assertEqual(summary["tool_calls"], 1)
+        self.assertEqual(summary["assistant_messages"], 1)
+        self.assertEqual(summary["models"], {"claude-test": 1})
+        self.assertEqual(summary["derived_elapsed_seconds"], 3.0)
+
+    def test_claude_stream_result_uses_authoritative_totals_and_cost(self) -> None:
+        events = [
+            {"type": "system", "subtype": "init", "timestamp": "2026-01-01T00:00:00Z"},
+            {
+                "type": "assistant",
+                "message": {
+                    "id": "msg-1",
+                    "role": "assistant",
+                    "model": "claude-test",
+                    "usage": {"input_tokens": 999, "output_tokens": 999},
+                    "content": [{"type": "tool_use", "name": "Bash"}],
+                },
+            },
+            {
+                "type": "result",
+                "subtype": "success",
+                "duration_ms": 12500,
+                "num_turns": 4,
+                "total_cost_usd": 0.42,
+                "usage": {
+                    "input_tokens": 12,
+                    "output_tokens": 34,
+                    "cache_read_input_tokens": 56,
+                    "cache_creation_input_tokens": 78,
+                },
+                "modelUsage": {
+                    "claude-test": {"costUSD": 0.42}
+                },
+            },
+        ]
+
+        summary = benchmark.summarize_transcript(events, "auto")
+
+        self.assertEqual(summary["source"], "claude-stream")
+        self.assertEqual(summary["tokens"]["total"], 180)
+        self.assertEqual(summary["turns"], 4)
+        self.assertEqual(summary["tool_calls"], 1)
+        self.assertEqual(summary["cost"]["total"], 0.42)
+        self.assertEqual(summary["cost_source"], "claude-reported")
+        self.assertEqual(summary["derived_elapsed_seconds"], 12.5)
+
+
 class QualityTests(unittest.TestCase):
     def test_score_review_uses_weights_and_requires_all_hard_gates(self) -> None:
         rubric = {
