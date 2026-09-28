@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en" data-theme="luxury">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Issue #2 agent benchmark</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/daisyui@5.5.19/daisyui.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/daisyui@5.5.19/themes.css">
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.2.4/dist/index.global.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    :where(.grid, .flex) > * { min-width: 0; }
+    :where(p, h1, h2, h3, li, td, th, .badge) { overflow-wrap: anywhere; }
+    :root { color-scheme: dark; }
+    body { min-height: 100vh; background:
+      radial-gradient(circle at 15% 0%, color-mix(in oklab, var(--color-primary) 13%, transparent), transparent 33rem),
+      var(--color-base-100); }
+    .eyebrow { letter-spacing: .16em; text-transform: uppercase; font-size: .72rem; font-weight: 800; opacity: .62; }
+    .metric { font-variant-numeric: tabular-nums; }
+    .candidate-row td:first-child { border-left: 3px solid transparent; }
+    .candidate-row.pass td:first-child { border-left-color: var(--color-success); }
+    .candidate-row.fail td:first-child { border-left-color: var(--color-error); }
+    .figure-label { fill: currentColor; font: 600 14px ui-sans-serif, system-ui; }
+    .axis-label { fill: currentColor; opacity: .55; font: 12px ui-sans-serif, system-ui; }
+    .grid-line { stroke: currentColor; opacity: .1; }
+    .axis { stroke: currentColor; opacity: .35; }
+  </style>
+</head>
+<body class="text-base-content">
+  <main class="mx-auto max-w-7xl p-4 sm:p-7 lg:p-10">
+    <header class="mb-8">
+      <div class="eyebrow mb-3">Composure · issue #2 · six captured runs</div>
+      <div class="grid gap-6 lg:grid-cols-[minmax(0,1.35fr)_minmax(18rem,.65fr)] lg:items-end">
+        <div>
+          <h1 class="text-4xl font-black tracking-tight sm:text-6xl">Two winners.<br><span class="text-primary">Different reasons.</span></h1>
+          <p class="mt-4 max-w-3xl text-lg opacity-75">Candidate B produced the strongest practical contract. Candidate A delivered the best compact, fast, low-cost qualifying result.</p>
+        </div>
+        <div class="card card-border bg-base-200/70">
+          <div class="card-body">
+            <div class="eyebrow">Decision</div>
+            <p class="text-xl font-bold">Start from B, then trim.</p>
+            <p class="text-sm opacity-70">Choose A instead when reviewability and turnaround outweigh exhaustive detail.</p>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <section class="stats stats-vertical mb-8 w-full bg-base-200 shadow lg:stats-horizontal">
+      <div class="stat"><div class="stat-title">Highest quality</div><div class="stat-value text-primary metric">93</div><div class="stat-desc">B and D tied</div></div>
+      <div class="stat"><div class="stat-title">Fastest qualifying</div><div class="stat-value metric">157s</div><div class="stat-desc">Candidate A</div></div>
+      <div class="stat"><div class="stat-title">Passed hard gates</div><div class="stat-value metric">4 / 6</div><div class="stat-desc">C and F incomplete</div></div>
+      <div class="stat"><div class="stat-title">Actual model families</div><div class="stat-value metric">4</div><div class="stat-desc">Not six distinct models</div></div>
+    </section>
+
+    <div role="alert" class="alert alert-warning mb-8 items-start">
+      <span class="text-xl">⚠</span>
+      <div>
+        <h2 class="font-bold">This is an agent-profile benchmark, not a clean six-model benchmark.</h2>
+        <p class="text-sm">B and D both used <code>claude-opus-5-5</code>. A and C both used <code>gpt-5.6-luna</code>. Their differences show that profile instructions and run variance materially affected the result.</p>
+      </div>
+    </div>
+
+    <section class="mb-10 grid gap-6 xl:grid-cols-[minmax(0,1.45fr)_minmax(20rem,.55fr)]">
+      <div class="card card-border bg-base-200/50">
+        <div class="card-body">
+          <div class="flex flex-wrap items-end justify-between gap-3">
+            <div><div class="eyebrow">Primary comparison</div><h2 class="card-title text-2xl">Quality against elapsed time</h2></div>
+            <div class="flex gap-2"><span class="badge badge-success badge-soft">Gate passed</span><span class="badge badge-error badge-soft">Gate failed</span></div>
+          </div>
+          <figure class="mt-2" aria-labelledby="chart-title">
+            <svg viewBox="0 0 820 370" width="100%" role="img">
+              <title id="chart-title">Scatter plot of weighted quality score against transcript elapsed time</title>
+              <line class="grid-line" x1="78" y1="64" x2="770" y2="64"/><line class="grid-line" x1="78" y1="145" x2="770" y2="145"/><line class="grid-line" x1="78" y1="226" x2="770" y2="226"/><line class="grid-line" x1="78" y1="307" x2="770" y2="307"/>
+              <line class="axis" x1="78" y1="28" x2="78" y2="320"/><line class="axis" x1="78" y1="320" x2="770" y2="320"/>
+              <text class="axis-label" x="40" y="68">90</text><text class="axis-label" x="40" y="149">70</text><text class="axis-label" x="40" y="230">50</text><text class="axis-label" x="40" y="311">30</text>
+              <text class="axis-label" x="93" y="346">150s</text><text class="axis-label" x="305" y="346">300s</text><text class="axis-label" x="518" y="346">450s</text><text class="axis-label" x="730" y="346">550s</text>
+              <text class="axis-label" transform="translate(16 220) rotate(-90)">QUALITY SCORE</text><text class="axis-label" x="348" y="366">TRANSCRIPT ELAPSED TIME</text>
+              <g id="candidate-a"><title>Candidate A: 82 quality, 157 seconds, passed</title><circle cx="104" cy="96" r="15" fill="var(--color-success)"/><text class="figure-label" x="126" y="101">A · 82</text></g>
+              <g id="candidate-b"><title>Candidate B: 93 quality, 369 seconds, passed</title><circle cx="414" cy="52" r="17" fill="var(--color-primary)"/><text class="figure-label" x="438" y="57">B · 93</text></g>
+              <g id="candidate-c"><title>Candidate C: 49 quality, 240 seconds, failed</title><circle cx="225" cy="230" r="14" fill="var(--color-error)"/><text class="figure-label" x="246" y="235">C · 49</text></g>
+              <g id="candidate-d"><title>Candidate D: 93 quality, 455 seconds, passed</title><circle cx="536" cy="52" r="17" fill="var(--color-primary)"/><text class="figure-label" x="560" y="57">D · 93</text></g>
+              <g id="candidate-e"><title>Candidate E: 64 quality, 233 seconds, passed</title><circle cx="215" cy="169" r="14" fill="var(--color-success)"/><text class="figure-label" x="236" y="174">E · 64</text></g>
+              <g id="candidate-f"><title>Candidate F: 44 quality, 529 seconds, failed</title><circle cx="642" cy="251" r="14" fill="var(--color-error)"/><text class="figure-label" x="663" y="256">F · 44</text></g>
+            </svg>
+            <figcaption class="mt-2 text-sm opacity-60">Upper-left is better. Time comes from transcript timestamps and may include permission handling or human pauses.</figcaption>
+          </figure>
+        </div>
+      </div>
+
+      <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-1">
+        <article class="card card-border bg-primary text-primary-content">
+          <div class="card-body"><div class="eyebrow">Best artifact</div><h3 class="text-3xl font-black">Candidate B</h3><p>Complete state, schema, version, URL, atomicity, lifecycle, and test contracts.</p><div class="card-actions"><span class="badge badge-lg">93 / 100</span><span class="badge badge-lg">369s</span></div></div>
+        </article>
+        <article class="card card-border bg-base-200">
+          <div class="card-body"><div class="eyebrow">Best tradeoff</div><h3 class="text-3xl font-black">Candidate A</h3><p>Strong and compact, with only minor UUID and CLI ambiguity.</p><div class="card-actions"><span class="badge badge-success badge-soft badge-lg">82 / 100</span><span class="badge badge-lg">$0.0303</span></div></div>
+        </article>
+      </div>
+    </section>
+
+    <section class="mb-10">
+      <div class="mb-4"><div class="eyebrow">Full scorecard</div><h2 class="text-3xl font-black">All captured runs</h2></div>
+      <div class="overflow-x-auto rounded-box border border-base-content/10 bg-base-200/50">
+        <table class="table table-zebra">
+          <thead><tr><th>Candidate</th><th>Run label</th><th>Actual model</th><th>Gate</th><th>Quality</th><th>Time</th><th>Tokens</th><th>Cost</th><th>Verdict</th></tr></thead>
+          <tbody>
+            <tr class="candidate-row pass"><td class="font-black text-lg">B</td><td><code>claude-fable</code></td><td><code>claude-opus-5-5</code></td><td><span class="badge badge-success badge-soft">Pass</span></td><td class="metric font-bold">93</td><td class="metric">369.2s</td><td class="metric">2.316M</td><td>Unavailable</td><td>Best overall; trim length</td></tr>
+            <tr class="candidate-row pass"><td class="font-black text-lg">D</td><td><code>claude-opus</code></td><td><code>claude-opus-5-5</code></td><td><span class="badge badge-success badge-soft">Pass</span></td><td class="metric font-bold">93</td><td class="metric">454.7s</td><td class="metric">2.728M</td><td>Unavailable</td><td>Equally strong, less efficient</td></tr>
+            <tr class="candidate-row pass"><td class="font-black text-lg">A</td><td><code>gpt6-astra</code></td><td><code>gpt-5.6-luna</code></td><td><span class="badge badge-success badge-soft">Pass</span></td><td class="metric font-bold">82</td><td class="metric">157.3s</td><td class="metric">604K</td><td class="metric">$0.0303</td><td>Best compact result</td></tr>
+            <tr class="candidate-row pass"><td class="font-black text-lg">E</td><td><code>gpt6-sol</code></td><td><code>gpt-6-sol</code></td><td><span class="badge badge-success badge-soft">Pass</span></td><td class="metric font-bold">64</td><td class="metric">232.5s</td><td class="metric">421K</td><td class="metric">$0.2304</td><td>Fix seed IDs first</td></tr>
+            <tr class="candidate-row fail"><td class="font-black text-lg">C</td><td><code>gpt6-luna</code></td><td><code>gpt-5.6-luna</code></td><td><span class="badge badge-error badge-soft">Fail</span></td><td class="metric font-bold">49</td><td class="metric">239.9s</td><td class="metric">758K</td><td class="metric">$0.0361</td><td>Repository contract missing</td></tr>
+            <tr class="candidate-row fail"><td class="font-black text-lg">F</td><td><code>claude-sonnet</code></td><td><code>claude-sonnet-5</code></td><td><span class="badge badge-error badge-soft">Fail</span></td><td class="metric font-bold">44</td><td class="metric">529.4s</td><td class="metric">1.240M</td><td>Unavailable</td><td>Key decisions unresolved</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="mb-10">
+      <div class="mb-4"><div class="eyebrow">Blind review</div><h2 class="text-3xl font-black">Why the scores differ</h2></div>
+      <div class="grid gap-4 lg:grid-cols-2">
+        <details class="collapse collapse-arrow border border-base-content/10 bg-base-200" open><summary class="collapse-title text-xl font-bold">B · Complete, but oversized</summary><div class="collapse-content"><p>Every major contract decision and prescribed scenario is present, with excellent executable-test ownership. Its 555 lines, optional alternatives, and low-level DSN detail violate the request for compactness.</p></div></details>
+        <details class="collapse collapse-arrow border border-base-content/10 bg-base-200"><summary class="collapse-title text-xl font-bold">D · Implementation-ready, but slower</summary><div class="collapse-content"><p>Strong constraints, typed operations, transaction rules, and failure cases. It reaches the same quality as B with 18.8% more time and 15.1% more tokens.</p></div></details>
+        <details class="collapse collapse-arrow border border-base-content/10 bg-base-200"><summary class="collapse-title text-xl font-bold">A · Compact and balanced</summary><div class="collapse-content"><p>All eight scenarios are covered with good atomicity and version rules. UUID generation is not fully pinned and the CLI synopsis omits <code>--apply</code>.</p></div></details>
+        <details class="collapse collapse-arrow border border-base-content/10 bg-base-200"><summary class="collapse-title text-xl font-bold">E · Qualifies with a data-portability risk</summary><div class="collapse-content"><p>Fixed seed UUIDs across sites would collide during future import or restore. Draft lifecycle and server-rendered route coverage also need correction.</p></div></details>
+        <details class="collapse collapse-arrow border border-base-content/10 bg-base-200"><summary class="collapse-title text-xl font-bold">C · Incomplete handoff</summary><div class="collapse-content"><p>Scenario coverage is decent, but concrete repository operations are absent. Its seed command and response design pull away from the agreed product direction.</p></div></details>
+        <details class="collapse collapse-arrow border border-base-content/10 bg-base-200"><summary class="collapse-title text-xl font-bold">F · Too many open decisions</summary><div class="collapse-content"><p>Versions, seed data, serve flags, identifier formats, timestamps, and current-versus-future responsibilities remain unresolved. P1-03 would still need architecture work.</p></div></details>
+      </div>
+    </section>
+
+    <section class="grid gap-6 lg:grid-cols-2">
+      <div class="card card-border bg-base-200"><div class="card-body"><div class="eyebrow">Efficiency evidence</div><h2 class="card-title text-2xl">Same model, different profile</h2><ul class="list-disc space-y-2 pl-5 opacity-80"><li>B beat D on time by 18.8% and tokens by 15.1%, with equal quality. Both used Opus 5.5.</li><li>A beat C on time by 34.5%, tokens by 20.3%, and reported cost by 16.1%. Both used Luna 5.6.</li><li>Profile instructions and run behavior mattered enough to change whether the ticket passed.</li></ul></div></div>
+      <div class="card card-border bg-base-200"><div class="card-body"><div class="eyebrow">Limits</div><h2 class="card-title text-2xl">What this batch cannot prove</h2><ul class="list-disc space-y-2 pl-5 opacity-80"><li>One run per candidate does not establish stable model averages.</li><li>One blind reviewer leaves scoring variance unmeasured.</li><li>Claude interactive transcripts contain no session-level dollar cost.</li><li>Repository checks passed for all candidates but do not validate contract semantics.</li></ul></div></div>
+    </section>
+
+    <footer class="mt-10 border-t border-base-content/10 pt-5 text-sm opacity-55">Evidence: captured benchmark transcripts, candidate patches, repository checks, and one independent blind rubric review per candidate. Baseline <code>c27b3ec</code>.</footer>
+  </main>
+</body>
+</html>
