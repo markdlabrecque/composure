@@ -117,9 +117,53 @@ class RunnerTests(unittest.TestCase):
         self.assertNotIn("go build", self.output(result))
 
     def test_bootstrap_allows_no_examples_yet(self) -> None:
-        result = self.run_runner(self.make_repo())
+        root = self.make_repo()
+        self.assertFalse((root / "tests").exists())
+        result = self.run_runner(root)
         self.assertEqual(result.returncode, 0, self.output(result))
         self.assertIn("Bootstrap", self.output(result))
+
+    def test_actual_checkout_without_runner_selftests_fails_with_diagnostic(self) -> None:
+        root = self.make_repo()
+        tests = root / "tests"
+        tests.mkdir()
+
+        result = self.run_runner(root)
+        output = self.output(result)
+
+        self.assertNotEqual(result.returncode, 0, output)
+        self.assertIn("tests/test_runner.py", output)
+
+    def test_root_tests_path_that_is_a_file_fails_with_diagnostic(self) -> None:
+        root = self.make_repo()
+        (root / "tests").write_text("not a directory\n", encoding="utf-8")
+
+        result = self.run_runner(root)
+        output = self.output(result)
+
+        self.assertNotEqual(result.returncode, 0, output)
+        self.assertIn("tests", output)
+        self.assertIn("not a directory", output)
+
+    def test_runner_selftest_failure_propagates_to_caller(self) -> None:
+        root = self.make_repo()
+        tests = root / "tests"
+        tests.mkdir()
+        (tests / "test_runner.py").write_text(
+            "import unittest\n"
+            "class FailingRunnerContract(unittest.TestCase):\n"
+            "    def test_intentional_failure(self):\n"
+            "        self.fail('intentional runner self-test failure')\n",
+            encoding="utf-8",
+        )
+
+        result = self.run_runner(root)
+        output = self.output(result)
+
+        self.assertNotEqual(result.returncode, 0, output)
+        self.assertIn("test_intentional_failure", output)
+        self.assertIn("AssertionError", output)
+        self.assertNotIn("SyntaxError", output)
 
     def test_runner_finds_repository_from_its_own_path_and_handles_spaces(self) -> None:
         root = self.make_repo()
