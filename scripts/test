@@ -82,8 +82,12 @@ module_is_valid = False
 if has_module:
     try:
         contents = module_file.read_text(encoding="utf-8")
+        # The module path is either an unquoted token or a complete Go
+        # interpreted/raw string literal. This is only a directive-shape guard,
+        # not validation of the full go.mod grammar or module path semantics.
+        module_path = r'(?:[^\s"`]+|"(?:[^"\\]|\\.)*"|`[^`]*`)'
         module_is_valid = any(
-            re.fullmatch(r"\s*module\s+\S+\s*(?://.*)?", line)
+            re.fullmatch(rf"\s*module\s+{module_path}\s*(?://.*)?", line)
             for line in contents.splitlines()
         )
     except (OSError, UnicodeError):

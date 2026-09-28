@@ -214,7 +214,7 @@ class RunnerTests(unittest.TestCase):
     def test_root_go_module_without_valid_module_directive_fails_before_go(self) -> None:
         root = self.make_repo()
         self.add_go_application()
-        (root / "go.mod").write_text("go 1.23\n", encoding="utf-8")
+        (root / "go.mod").write_text('module "unterminated\n', encoding="utf-8")
         go = self.fake_go()
         log = self.root / "go calls.txt"
         result = self.run_runner(root, env={
@@ -227,7 +227,9 @@ class RunnerTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0, output)
         self.assertIn("valid module directive", output)
         self.assertNotIn("Bootstrap checks", output)
-        self.assertFalse(log.exists(), "invalid root module must not invoke Go")
+        self.assertNotIn("Go application checks", output)
+        calls = log.read_text(encoding="utf-8").splitlines() if log.exists() else []
+        self.assertEqual(calls, [], "invalid root module must not invoke Go")
 
     def test_go_module_without_test_setup_is_rejected(self) -> None:
         root = self.make_repo()
