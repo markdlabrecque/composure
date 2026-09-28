@@ -211,6 +211,24 @@ class RunnerTests(unittest.TestCase):
         self.assertIn("go.mod", output)
         self.assertNotIn("not implemented", output.lower())
 
+    def test_root_go_module_without_valid_module_directive_fails_before_go(self) -> None:
+        root = self.make_repo()
+        self.add_go_application()
+        (root / "go.mod").write_text("go 1.23\n", encoding="utf-8")
+        go = self.fake_go()
+        log = self.root / "go calls.txt"
+        result = self.run_runner(root, env={
+            "PATH": self.python_only_path(go=go),
+            "GO_CALL_LOG": str(log),
+            "FAIL_GO_COMMAND": "",
+            "FAKE_GO_LIST_OUTPUT": self.package_metadata(test_go_files=["main_test.go"]),
+        })
+        output = self.output(result)
+        self.assertNotEqual(result.returncode, 0, output)
+        self.assertIn("valid module directive", output)
+        self.assertNotIn("Bootstrap checks", output)
+        self.assertFalse(log.exists(), "invalid root module must not invoke Go")
+
     def test_go_module_without_test_setup_is_rejected(self) -> None:
         root = self.make_repo()
         self.add_go_application(test_setup=False)
@@ -382,6 +400,23 @@ class RunnerTests(unittest.TestCase):
         output = self.output(result)
         self.assertNotEqual(result.returncode, 0, output)
         self.assertIn("json", output.lower())
+        self.assertNotIn("Go application checks", output)
+        self.assertEqual(log.read_text(encoding="utf-8").splitlines(), ["list -json ./..."])
+
+    def test_empty_go_list_metadata_fails_before_build_checks(self) -> None:
+        root = self.make_repo()
+        self.add_go_application()
+        go = self.fake_go()
+        log = self.root / "go calls.txt"
+        result = self.run_runner(root, env={
+            "PATH": self.python_only_path(go=go),
+            "GO_CALL_LOG": str(log),
+            "FAIL_GO_COMMAND": "",
+            "FAKE_GO_LIST_OUTPUT": "  \t  ",
+        })
+        output = self.output(result)
+        self.assertNotEqual(result.returncode, 0, output)
+        self.assertIn("no package metadata", output.lower())
         self.assertNotIn("Go application checks", output)
         self.assertEqual(log.read_text(encoding="utf-8").splitlines(), ["list -json ./..."])
 
