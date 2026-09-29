@@ -117,9 +117,53 @@ class RunnerTests(unittest.TestCase):
         self.assertNotIn("go build", self.output(result))
 
     def test_bootstrap_allows_no_examples_yet(self) -> None:
-        result = self.run_runner(self.make_repo())
+        root = self.make_repo()
+        self.assertFalse((root / "tests").exists())
+        result = self.run_runner(root)
         self.assertEqual(result.returncode, 0, self.output(result))
         self.assertIn("Bootstrap", self.output(result))
+
+    def test_actual_checkout_without_runner_selftests_fails_with_diagnostic(self) -> None:
+        root = self.make_repo()
+        tests = root / "tests"
+        tests.mkdir()
+
+        result = self.run_runner(root)
+        output = self.output(result)
+
+        self.assertNotEqual(result.returncode, 0, output)
+        self.assertIn("tests/test_runner.py", output)
+
+    def test_root_tests_path_that_is_a_file_fails_with_diagnostic(self) -> None:
+        root = self.make_repo()
+        (root / "tests").write_text("not a directory\n", encoding="utf-8")
+
+        result = self.run_runner(root)
+        output = self.output(result)
+
+        self.assertNotEqual(result.returncode, 0, output)
+        self.assertIn("tests", output)
+        self.assertIn("not a directory", output)
+
+    def test_runner_selftest_failure_propagates_to_caller(self) -> None:
+        root = self.make_repo()
+        tests = root / "tests"
+        tests.mkdir()
+        (tests / "test_runner.py").write_text(
+            "import unittest\n"
+            "class FailingRunnerContract(unittest.TestCase):\n"
+            "    def test_intentional_failure(self):\n"
+            "        self.fail('intentional runner self-test failure')\n",
+            encoding="utf-8",
+        )
+
+        result = self.run_runner(root)
+        output = self.output(result)
+
+        self.assertNotEqual(result.returncode, 0, output)
+        self.assertIn("test_intentional_failure", output)
+        self.assertIn("AssertionError", output)
+        self.assertNotIn("SyntaxError", output)
 
     def test_runner_finds_repository_from_its_own_path_and_handles_spaces(self) -> None:
         root = self.make_repo()
@@ -154,7 +198,7 @@ class RunnerTests(unittest.TestCase):
         result = self.run_runner(root)
         output = self.output(result)
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("broken.json", output)
+        self.assertIn("docs/phase1/examples/nested/broken.json", output)
         self.assertNotIn("not implemented", output.lower())
 
     def test_go_source_without_module_is_rejected(self) -> None:
@@ -166,6 +210,46 @@ class RunnerTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("go.mod", output)
         self.assertNotIn("not implemented", output.lower())
+
+    def test_root_go_module_without_module_directive_fails_before_go(self) -> None:
+        root = self.make_repo()
+        self.add_go_application()
+        (root / "go.mod").write_text("go 1.23\n", encoding="utf-8")
+        go = self.fake_go()
+        log = self.root / "go calls.txt"
+        result = self.run_runner(root, env={
+            "PATH": self.python_only_path(go=go),
+            "GO_CALL_LOG": str(log),
+            "FAIL_GO_COMMAND": "",
+            "FAKE_GO_LIST_OUTPUT": self.package_metadata(test_go_files=["main_test.go"]),
+        })
+        output = self.output(result)
+        self.assertNotEqual(result.returncode, 0, output)
+        self.assertIn("valid module directive", output)
+        self.assertNotIn("Bootstrap checks", output)
+        self.assertNotIn("Go application checks", output)
+        calls = log.read_text(encoding="utf-8").splitlines() if log.exists() else []
+        self.assertEqual(calls, [], "missing module directive must not invoke Go")
+
+    def test_root_go_module_without_valid_module_directive_fails_before_go(self) -> None:
+        root = self.make_repo()
+        self.add_go_application()
+        (root / "go.mod").write_text('module "unterminated\n', encoding="utf-8")
+        go = self.fake_go()
+        log = self.root / "go calls.txt"
+        result = self.run_runner(root, env={
+            "PATH": self.python_only_path(go=go),
+            "GO_CALL_LOG": str(log),
+            "FAIL_GO_COMMAND": "",
+            "FAKE_GO_LIST_OUTPUT": self.package_metadata(test_go_files=["main_test.go"]),
+        })
+        output = self.output(result)
+        self.assertNotEqual(result.returncode, 0, output)
+        self.assertIn("valid module directive", output)
+        self.assertNotIn("Bootstrap checks", output)
+        self.assertNotIn("Go application checks", output)
+        calls = log.read_text(encoding="utf-8").splitlines() if log.exists() else []
+        self.assertEqual(calls, [], "malformed root module must not invoke Go")
 
     def test_go_module_without_test_setup_is_rejected(self) -> None:
         root = self.make_repo()
@@ -324,6 +408,23 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(log.read_text(encoding="utf-8").splitlines(), ["list -json ./..."])
         self.assertNotIn("Go application checks", self.output(result))
 
+    def test_empty_go_list_metadata_fails_before_build_checks(self) -> None:
+        root = self.make_repo()
+        self.add_go_application()
+        go = self.fake_go()
+        log = self.root / "go calls.txt"
+        result = self.run_runner(root, env={
+            "PATH": self.python_only_path(go=go),
+            "GO_CALL_LOG": str(log),
+            "FAIL_GO_COMMAND": "",
+            "FAKE_GO_LIST_OUTPUT": "  \t  ",
+        })
+        output = self.output(result)
+        self.assertNotEqual(result.returncode, 0, output)
+        self.assertIn("no package metadata", output.lower())
+        self.assertNotIn("Go application checks", output)
+        self.assertEqual(log.read_text(encoding="utf-8").splitlines(), ["list -json ./..."])
+
     def test_malformed_go_list_metadata_fails_before_build_checks(self) -> None:
         root = self.make_repo()
         self.add_go_application()
@@ -340,6 +441,40 @@ class RunnerTests(unittest.TestCase):
         self.assertIn("json", output.lower())
         self.assertNotIn("Go application checks", output)
         self.assertEqual(log.read_text(encoding="utf-8").splitlines(), ["list -json ./..."])
+
+    def test_invalid_go_list_json_records_and_field_types_fail_closed(self) -> None:
+        invalid_metadata = {
+            "non-object record": "false",
+            "missing import path": '{"TestGoFiles":["main_test.go"]}',
+            "non-array test file field": (
+                '{"ImportPath":"example.test/composure",'
+                '"TestGoFiles":"main_test.go"}'
+            ),
+            "non-string test filename": (
+                '{"ImportPath":"example.test/composure",'
+                '"TestGoFiles":[1]}'
+            ),
+        }
+        for label, metadata in invalid_metadata.items():
+            with self.subTest(metadata=label):
+                root = self.make_repo()
+                self.add_go_application()
+                go = self.fake_go()
+                log = self.root / "go calls.txt"
+                if log.exists():
+                    log.unlink()
+                result = self.run_runner(root, env={
+                    "PATH": self.python_only_path(go=go),
+                    "GO_CALL_LOG": str(log),
+                    "FAIL_GO_COMMAND": "",
+                    "FAKE_GO_LIST_OUTPUT": metadata,
+                })
+                output = self.output(result)
+                self.assertNotEqual(result.returncode, 0, output)
+                self.assertIn("invalid go list JSON metadata", output)
+                self.assertNotIn("Go application checks", output)
+                calls = log.read_text(encoding="utf-8").splitlines() if log.exists() else []
+                self.assertEqual(calls, ["list -json ./..."])
 
     def test_missing_python_tool_fails_in_bootstrap_mode(self) -> None:
         root = self.make_repo()
