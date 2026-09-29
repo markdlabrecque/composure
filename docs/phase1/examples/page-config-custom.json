@@ -1,0 +1,27 @@
+{
+  "format_version": 1,
+  "content_types": [
+    {
+      "id": "page",
+      "label": "Page",
+      "fields": [
+        {
+          "id": "strapline",
+          "kind": "short_text",
+          "label": "Strapline",
+          "help_text": "A short introductory line shown beneath the title.",
+          "required": false,
+          "order": 10
+        },
+        {
+          "id": "body",
+          "kind": "long_text",
+          "label": "Story",
+          "help_text": "",
+          "required": true,
+          "order": 20
+        }
+      ]
+    }
+  ]
+}
