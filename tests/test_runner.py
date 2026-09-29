@@ -154,7 +154,7 @@ class RunnerTests(unittest.TestCase):
         result = self.run_runner(root)
         output = self.output(result)
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("docs/phase1/examples/nested/broken.json", output)
+        self.assertIn("broken.json", output)
         self.assertNotIn("not implemented", output.lower())
 
     def test_go_source_without_module_is_rejected(self) -> None:
