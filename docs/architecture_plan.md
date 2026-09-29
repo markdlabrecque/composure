@@ -19,14 +19,14 @@ Design drivers, in priority order:
 
 ## Stack decision
 
-Decision: a fully custom CMS in Go, built mostly on the standard library, with SQLite storage and server-rendered pages via `html/template`. No framework we don't control, and no Node in the stack.
+Decision: a fully custom CMS in Go, built mostly on the standard library, with SQLite storage and server-rendered pages via `html/template`. No framework we don't control and no Node runtime or normal application build. A pinned prebuilt rich-text bundle is allowed; updating it may use upstream Node tooling.
 
 | Layer | Choice | Why |
 | --- | --- | --- |
 | Language | Go | Single static binary, strong typing, fast tests, little dependency churn |
 | HTTP | Standard library `net/http` router | Method and path patterns built in; no framework lock-in |
 | Database | SQLite in WAL mode | No separate database server, one file per site, ample for editor-driven writes |
-| Schema | Our own tables and migrations | Naming, versioning and workflow designed for Composure's content model |
+| Schema | Code-owned tables/migrations; JSON field documents per draft/snapshot | Runtime types do not issue DDL; transactional reference and path indexes support queries |
 | Rendering | Go `html/template` | Server-rendered HTML for both the public site and the admin |
 | Reverse proxy | Caddy | Automatic Let's Encrypt TLS, domain routing in a few lines |
 | Process manager | systemd | One service per site, restarts on failure |
@@ -52,19 +52,15 @@ Requirements:
 
 ## Build scope and effort
 
-The original rough effort estimates below predate the detailed PRD and should be replanned for its broader v1 scope. They are not delivery commitments.
-
-| Component | Scope for v1 | Rough effort |
-| --- | --- | --- |
-| Auth and sessions | Login, password hashing, secure cookies, CSRF, roles (admin, editor) | 3–5 days |
-| Content model | Types, fields and relations defined in config; migrations | 3–5 days |
-| Admin CRUD screens | Generated list, edit and preview screens per type | 5–8 days |
-| Media uploads | Validation, storage, image styles and focal point | 3–4 days |
-| Public rendering | Routing, templates, menus, caching | 3–5 days |
-| Snapshots and publishing | Draft/published states, publish-only snapshots | 2–4 days |
-| Ops tooling | Backups, deploy script, systemd and Caddy templates | 2–3 days |
+The former 21–34 day estimate is withdrawn. It predates most of the PRD and is not a useful schedule. The PRD now defers partial portable exports/imports and ranks further cut candidates; the remaining P0 features still gate release. Re-estimate after the Page journey and again after the first full editorial workflow, including security review and operations work.
 
 Auth and file handling are the pieces most often underestimated. Treat security-sensitive code as human-reviewed, even when an agent writes it.
+
+## Storage and configuration decisions
+
+The [runtime content and deployment decision](adr/0001-runtime-content-and-deployment.md) fixes JSON storage, supported model changes, production configuration locking, file retention and rollback safety. The [Page contract](phase1/content-contract.md) gives the initial schema. Configuration editing happens in development/staging, with Git-reviewed explicit deployment to production; active SQLite configuration is the deployed copy.
+
+Release builds remain CGO_ENABLED=0. Images use standard-library JPEG/PNG encoding, golang.org/x/image/webp decoding and golang.org/x/image/draw resizing. WebP input becomes PNG. Pin these dependencies when media lands, enforce decode budgets and use one image worker per site initially. Generate required variants before publication, never on visitor requests.
 
 ## Database strategy
 
@@ -99,7 +95,7 @@ flowchart LR
     N --> DN[(site-n.db)]
 ```
 
-Caddy terminates TLS and forwards each domain to that site's port.
+Caddy terminates TLS and forwards each domain to that site's port. Use separate service users, databases and file directories. Set and measure systemd MemoryMax and CPUQuota per site; process separation alone does not isolate resource consumption. Deploy the protected Page journey in phase 2, then harden recovery in phase 6.
 
 **Why one process per site, not true multi-tenancy**
 
@@ -109,6 +105,10 @@ Caddy terminates TLS and forwards each domain to that site's port.
 - Idle Go processes are cheap, so the resource cost is small.
 
 **Deploy flow:** build the binary, validate and compare configuration, create a database rollback snapshot, apply configuration explicitly, start the new release, and check the site. An ordinary service start does not import configuration.
+
+## Cache strategy
+
+Use a bounded in-process HTML cache keyed by path and a transactional site publication generation. Bump the generation on all public-affecting content, menu, redirect and configuration changes. This deliberately invalidates the whole site rather than maintaining a dependency graph. In-flight renders cannot write into a newer generation. Admin/preview are never cached; Caddy and CDN response caching are excluded from acceptance runs. Test publishing and image work under traffic, including two sites sharing the host.
 
 ## Performance and scaling
 
@@ -150,14 +150,17 @@ Local setup is: run the binary, open the port. No Apache, Nginx or database serv
 
 ## Next actions
 
-- [ ] Spike: a Go binary with the standard library router and SQLite, rendering one page with `html/template`.
-- [ ] Model the five launch content types and menus in the schema and config format.
+This list is a summary; the work plan owns sequencing and acceptance, including SMTP, redirects, menus, Trash and audit.
+
+- [ ] Establish required CI via #14, activate Go/browser gates as code arrives, and add minimal agent conventions before application implementation.
+- [ ] Keep the local Page tracer: Go router and SQLite, rendering one page with `html/template`.
+- [ ] Follow the Page contract and storage ADR; define the remaining feature contracts when their phase begins.
 - [ ] Build auth and sessions first, with human review before anything else depends on it.
 - [ ] Design the admin UI base theme and per-site naming and branding config.
 - [ ] Define the repository interface for data access in custom code.
 - [ ] Implement drafts and publish-only snapshots as specified in the PRD.
 - [ ] Set up local HTTPS with the existing mkcert CA.
-- [ ] Write a systemd unit and Caddy config template for one site per port.
+- [ ] Deploy the authenticated Page to Hetzner in phase 2 with systemd/Caddy and run a smoke load; harden deployment in phase 6.
 - [ ] Build the CLI full export and restore commands; backup scheduling and off-host storage are operator responsibilities.
 - [ ] Load test cached and uncached pages on the intended Hetzner host against the PRD targets, then increase traffic to find the first bottleneck.
-- [ ] Write agent guidance (conventions, test commands) so agents can add extensions safely.
+- [ ] Require independent auth/upload review before client launch, with dependency, static-analysis and fuzz gates alongside human review.
