@@ -82,8 +82,12 @@ module_is_valid = False
 if has_module:
     try:
         contents = module_file.read_text(encoding="utf-8")
+        # The module path is either an unquoted token or a complete Go
+        # interpreted/raw string literal. This is only a directive-shape guard,
+        # not validation of the full go.mod grammar or module path semantics.
+        module_path = r'(?:[^\s"`]+|"(?:[^"\\]|\\.)*"|`[^`]*`)'
         module_is_valid = any(
-            re.fullmatch(r"\s*module\s+\S+\s*(?://.*)?", line)
+            re.fullmatch(rf"\s*module\s+{module_path}\s*(?://.*)?", line)
             for line in contents.splitlines()
         )
     except (OSError, UnicodeError):
@@ -116,6 +120,16 @@ if runner_tests.is_file():
     )
     if result.returncode:
         raise SystemExit(result.returncode)
+elif (root / "tests").exists():
+    if (root / "tests").is_dir():
+        diagnostic = (
+            "tests/ exists but required runner contract tests are missing: "
+            "tests/test_runner.py"
+        )
+    else:
+        diagnostic = "tests exists but is not a directory"
+    print(f"scripts/test: {diagnostic}", file=sys.stderr)
+    raise SystemExit(1)
 
 if not application_mode:
     raise SystemExit(0)
