@@ -20,7 +20,7 @@ func runConfig(args []string, stdout, stderr io.Writer) int {
 		verb = args[0]
 	}
 	if verb != "validate" && verb != "export" {
-		return configFailure(stderr, verb, 2, fmt.Errorf("usage_error: expected validate or export"))
+		return configFailure(stderr, "", 2, fmt.Errorf("usage_error: unknown config subcommand %q", verb))
 	}
 	flags := flag.NewFlagSet("config "+verb, flag.ContinueOnError)
 	flags.SetOutput(io.Discard)

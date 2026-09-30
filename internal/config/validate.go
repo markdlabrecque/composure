@@ -55,6 +55,10 @@ var simplePathName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 // number spelling until validation has proved that integer fields are exact.
 func Validate(data []byte) (Document, error) {
 	var empty Document
+	var syntacticDocument json.RawMessage
+	if err := json.Unmarshal(data, &syntacticDocument); err != nil {
+		return empty, wholeDocumentSyntaxFailure(data, err)
+	}
 	if offset := invalidUTF8Offset(data); offset >= 0 {
 		return empty, syntaxFailure(offset, "input is not valid UTF-8", "invalid configuration JSON: input is not valid UTF-8")
 	}
@@ -64,13 +68,6 @@ func Validate(data []byte) (Document, error) {
 	root, err := decodeValue(decoder, "$", &duplicate)
 	if err != nil {
 		return empty, decoderFailure(data, decoder, err)
-	}
-	position := int(decoder.InputOffset())
-	for position < len(data) && isJSONSpace(data[position]) {
-		position++
-	}
-	if position < len(data) {
-		return empty, syntaxFailure(position, "expected one JSON document", "invalid configuration JSON")
 	}
 	if offset := unpairedSurrogateOffset(data); offset >= 0 {
 		legacy := "invalid configuration JSON: unpaired surrogate at byte " + strconv.Itoa(offset)
@@ -178,6 +175,23 @@ func decoderFailure(data []byte, decoder *json.Decoder, err error) *ValidationEr
 		offset = 0
 	}
 	return syntaxFailure(offset, "invalid JSON syntax", "invalid configuration JSON")
+}
+
+func wholeDocumentSyntaxFailure(data []byte, err error) *ValidationError {
+	var syntax *json.SyntaxError
+	if errors.As(err, &syntax) {
+		offset := int(syntax.Offset) - 1
+		if strings.Contains(strings.ToLower(syntax.Error()), "invalid escape sequence") {
+			if invalidHex := invalidUnicodeHexOffset(data); invalidHex >= 0 {
+				offset = invalidHex
+			}
+		}
+		if strings.Contains(strings.ToLower(syntax.Error()), "unexpected end") {
+			offset = len(data)
+		}
+		return syntaxFailure(offset, "invalid JSON syntax", "invalid configuration JSON")
+	}
+	return syntaxFailure(len(data), "invalid JSON syntax", "invalid configuration JSON")
 }
 
 func validateRoot(root *jsonValue) *ValidationError {
@@ -431,6 +445,43 @@ func unpairedSurrogateOffset(data []byte) int {
 		}
 	}
 	return -1
+}
+
+func invalidUnicodeHexOffset(data []byte) int {
+	inString := false
+	for i := 0; i < len(data); i++ {
+		if !inString {
+			if data[i] == '"' {
+				inString = true
+			}
+			continue
+		}
+		if data[i] == '"' {
+			inString = false
+			continue
+		}
+		if data[i] != '\\' || i+1 >= len(data) {
+			continue
+		}
+		if data[i+1] != 'u' {
+			i++
+			continue
+		}
+		if i+6 > len(data) {
+			return -1
+		}
+		for digit := i + 2; digit < i+6; digit++ {
+			if !isHexDigit(data[digit]) {
+				return digit
+			}
+		}
+		i += 5
+	}
+	return -1
+}
+
+func isHexDigit(value byte) bool {
+	return value >= '0' && value <= '9' || value >= 'a' && value <= 'f' || value >= 'A' && value <= 'F'
 }
 
 func hexUnit(digits []byte) (uint16, bool) {
