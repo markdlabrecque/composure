@@ -15,7 +15,7 @@ Status: written 2026-09-30 from `docs/phase2/tickets.md` and GitHub issues #58 t
 2. **One SQL file per table.** P2-09 (#70) first moves the Phase 1 schema from `internal/store/schema.sql` to `internal/store/schema/001_page.sql` loaded with `//go:embed schema/*.sql` in name order. Every later store ticket adds its own numbered file and its own `<table>.go`, so store lanes never touch the same file.
 3. **Contract sections are separate files.** P2-03 (#62) creates `docs/phase2/access-contract.md` as an index and P2-01a (#58) does the same for `docs/phase2/audit-events.md`. Each later contract ticket writes its section to its own file under the matching directory and adds one link to the index. This lets all contract sections run in parallel.
 4. **One lane, one agent at a time.** Two agents never work the same lane concurrently.
-5. **Rebase on `develop` before review.** A green branch does not prove integration with a parallel lane.
+5. **Rebase on `phase-2` before review.** A green branch does not prove integration with a parallel lane.
 6. **Sol tickets get the review cap.** Sol-labelled tickets (#71, #84, #98, #116) are the security-critical core. Do not merge them without the full reviewer round.
 
 ## Lanes

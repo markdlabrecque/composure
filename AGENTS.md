@@ -16,7 +16,8 @@ Before creating a worktree:
 1. Confirm the issue is open, actionable, and its dependencies are complete.
 2. Assign the issue to the repository maintainer (`markdlabrecque`) when picking it up.
 3. Select the implementor model and reasoning effort using the rules below, and include both in the ticket handoff.
-4. Invoke `/create-worktree` for this ticket and work only in the resulting ticket-specific worktree. Do not put worktrees inside the main checkout. Preserve unrelated changes in any checkout.
+4. Set `BASE_BRANCH` in the main checkout's `.env` to the ticket's phase integration branch (`phase-1`, `phase-2` or `phase-3`, per `docs/work_plan.md`).
+5. Invoke `/create-worktree` for this ticket and work only in the resulting ticket-specific worktree. Do not put worktrees inside the main checkout. Preserve unrelated changes in any checkout.
 
 ## TDD and implementation
 
@@ -24,6 +25,11 @@ Invoke `/subagent-tdd-pipeline` for the ticket. Follow its test-writer, implemen
 
 The dispatching orchestrator selects the implementor model and reasoning effort before sending out the ticket:
 
+### Claude Code orchestration
+- When using a Claude Code orchestrator, only use Claude Code subagents, and make them all use Fable 5.1 models.
+
+### Codex orchestration
+Follow these instructions only when using a Codex orchestrator:
 - Check the issue's routing labels first. `Sol` selects `gpt-6.1-sol`; `Luna` selects `gpt-6-luna`. If neither label is present, choose between these models based on the ticket's difficulty, scope, and risk. If both are present, stop and ask Mark to resolve the conflict. Preserve the labels.
 - Choose a supported reasoning effort based on the ticket's difficulty: `low` for straightforward changes, `medium` for moderate work, and `high` or `xhigh` for complex logic, uncertain behavior, or substantial correctness risk.
 - Record the selected model, reasoning effort, and brief rationale in the ticket handoff. The receiving ticket orchestrator must pass those values explicitly when spawning the `implementor` with fresh context. These selections override the implementor profile's model and reasoning-effort defaults and the pipeline's model-family restriction for this project.

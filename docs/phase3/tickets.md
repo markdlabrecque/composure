@@ -1,6 +1,6 @@
 # Phase 3 ticket draft: configurable content and the publishing journey
 
-Status: Draft written 2026-09-30 while Phase 1 and Phase 2 are still in progress. No GitHub issues are opened yet. Ticket IDs are `P3-nn`; issue numbers are added when the tickets are opened, after Phase 2 closes.
+Status: Draft written 2026-09-30 while Phase 1 and Phase 2 are still in progress. Planning does not wait for them: this doc is the ticket source for the `analyze-ticket` skill, which splits or refines `P3-nn` entries in place. GitHub issues are opened from the settled layout and target the `phase-3` integration branch; issue numbers are recorded here when opened.
 
 Source: [work plan Phase 3](../work_plan.md#phase-3-build-configurable-content-and-the-publishing-journey), [PRD](../prd.md) FR-03, FR-04 (basic editing), FR-05, FR-06, FR-08, FR-13, FR-14 and the editorial consistency requirements. The [phase 1 content contract](../phase1/content-contract.md) section 10 and the [storage and deployment ADR](../adr/0001-runtime-content-and-deployment.md) fix the rules these tickets must follow.
 

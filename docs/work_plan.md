@@ -27,7 +27,7 @@ The bullets below are delivery boundaries, not a complete task backlog. Split an
 
 ## Merge and ticket completion
 
-Use `develop` for ticket worktree bases, rebases, PR targets and completion checks. The main checkout's `.env` must set `BASE_BRANCH=develop`. Required merge checks and auto-merge enforcement apply to `develop`. Historical PRs merged into `main` remain historical evidence; verify their changes are present in `develop` before using them as prerequisites. Promoting `develop` to `main` is a separate release action and does not block ticket closure. This policy replaces older `main` targets and serial-queue wording in ticket descriptions and the phase tracker.
+Each phase has its own integration branch: `phase-1`, `phase-2` and `phase-3`, all cut from the former `develop` at `d94ab64` on 2026-09-30 (`develop` was renamed to `phase-1`). Use the ticket's phase branch for worktree bases, rebases, PR targets and completion checks, and set `BASE_BRANCH` in the main checkout's `.env` to that branch before creating the worktree. Required merge checks and auto-merge enforcement apply to every phase branch. Phases run in parallel: planning, ticket opening and implementation on `phase-N` do not wait for `phase-(N-1)` to close. Merge `phase-N` forward into `phase-(N+1)` whenever the earlier branch lands work the later phase depends on, and before a later-phase ticket that relies on it starts; a cross-phase prerequisite counts as satisfied only once it is present in the later phase branch. Historical PRs merged into `main` remain historical evidence; verify their changes are present in the phase branch before using them as prerequisites. Promoting a phase branch to `main` is a separate release action and does not block ticket closure. This policy replaces older `develop` and `main` targets and serial-queue wording in ticket descriptions and the phase tracker.
 
 Independent tickets may run in parallel when their prerequisites are complete and their file ownership and contracts do not conflict. Start each ticket in its own numbered worktree and separate Orca Codex session. Use the `subagent-tdd-pipeline` stages and model profiles; exactly one `Luna` or `Sol` label selects the implementor. Documentation and verification-only work use the skill's applicable validation and independent-review route.
 
@@ -43,14 +43,14 @@ Independent tickets may run in parallel when their prerequisites are complete an
 
 The ticket session owns review, checks, the verified completion summary, issue closure and cleanup. A reporter may carry out these actions under that session's coordination.
 
-1. Confirm prerequisites are merged into or already present in `develop`, summarized and closed. Verification-only prerequisites require accepted evidence and closure, not a duplicate PR.
-2. For changes, obtain independent reviewer approval and pass all required local gates on the candidate before pushing. Open a PR targeting `develop`, titled `#<number>: <title>`, with `Refs #<number>` and no automatic closing keywords.
-3. Enable auto-merge only after approval and confirmation that the required CI check is configured. Require passing CI for the current candidate against the current `develop` base. New candidate or base changes require applicable gates and review again. Never bypass a failed or missing check.
-4. Confirm GitHub reports the PR merged into `develop`; record the merge commit and CI-tested revision. For verification-only work, retain the inspected revision, commands, results, existing merge/CI evidence and independent review. Do not invent retrospective review or auto-merge evidence. Unresolved acceptance criteria keep the ticket open.
+1. Confirm prerequisites are merged into or already present in the ticket's phase branch, summarized and closed. Verification-only prerequisites require accepted evidence and closure, not a duplicate PR.
+2. For changes, obtain independent reviewer approval and pass all required local gates on the candidate before pushing. Open a PR targeting the ticket's phase branch, titled `#<number>: <title>`, with `Refs #<number>` and no automatic closing keywords.
+3. Enable auto-merge only after approval and confirmation that the required CI check is configured. Require passing CI for the current candidate against the current phase branch base. New candidate or base changes require applicable gates and review again. Never bypass a failed or missing check.
+4. Confirm GitHub reports the PR merged into the phase branch; record the merge commit and CI-tested revision. For verification-only work, retain the inspected revision, commands, results, existing merge/CI evidence and independent review. Do not invent retrospective review or auto-merge evidence. Unresolved acceptance criteria keep the ticket open.
 5. Post the completion summary on the issue with acceptance coverage, local/CI results, tested revision, review outcome, merged PR/commit where applicable, and limitations or follow-ups. Verify it exists before closing the issue and updating the tracker. Reuse existing summaries for the same result.
 6. Invoke `retire-worktree` after closure. Dependent tickets may start only after prerequisite completion. Close parent issues after all required children and parent criteria have evidence; close the phase tracker after its verified phase summary.
 
-Bootstrap CI comes first. Issue #14 establishes the shared runner, stable `Composure checks` status and CI-gated auto-merge on `develop`. Issue #4 activates real Go checks; issue #13 adds the browser gate to the same workflow. Local and CI commands stay aligned. Missing application or browser tests must never be reported as passing tests.
+Bootstrap CI comes first. Issue #14 establishes the shared runner, stable `Composure checks` status and CI-gated auto-merge on the integration branch (then `develop`, now `phase-1`). Issue #4 activates real Go checks; issue #13 adds the browser gate to the same workflow. Local and CI commands stay aligned. Missing application or browser tests must never be reported as passing tests.
 
 ## Phase 1. Prove the foundation and publishing model
 
@@ -65,7 +65,7 @@ Outcome: A local Go application persists and renders one example Page, proving t
 
 ### Progress as of 2026-09-30
 
-Closed prerequisites include #2, #3, #4, #5, #6, #11, #14, #19, #20, #23, #24, #25, #29 and #30, plus runner-verification children #35, #36, #37, #38, #39 and #40. Preserve their evidence and verify their delivered changes are present in `develop` during readiness checks. Do not redispatch completed work. #1 remains the phase tracker.
+Closed prerequisites include #2, #3, #4, #5, #6, #11, #14, #19, #20, #23, #24, #25, #29 and #30, plus runner-verification children #35, #36, #37, #38, #39 and #40. Preserve their evidence and verify their delivered changes are present in `phase-1` during readiness checks. Do not redispatch completed work. #1 remains the phase tracker.
 
 - The Page storage/runtime and configuration contracts, bootstrap CI and required merge checks are complete. The application initializes and serves a stored Page and rejects incompatible site versions without changing data.
 - [#11](https://github.com/markdlabrecque/composure/issues/11) completed active configuration export and validation in [PR #50](https://github.com/markdlabrecque/composure/pull/50), merged into `develop` at `90743fac181f08fc9ba582188785e9dc22f93301`. Its [completion summary](https://github.com/markdlabrecque/composure/issues/11#issuecomment-5912577676) records acceptance, review and local/hosted gate evidence.
@@ -94,7 +94,7 @@ The table lists open work as of 2026-09-30 and preserves the original wave numbe
 
 Issue #21 belongs to Phase 6 full recovery; #22 belongs to Phase 2 audit design. Neither blocks Phase 1. The older #34 requirement for an already accepted #22 design is replaced by a handoff that schedules that design with its first consumers in Phase 2.
 
-Coordinate ownership before starting parallel work; serialize overlapping file edits if necessary. Recheck candidates against current `develop` before merging. A passing feature branch does not prove its integration with another parallel change.
+Coordinate ownership before starting parallel work; serialize overlapping file edits if necessary. Recheck candidates against the current phase branch before merging. A passing feature branch does not prove its integration with another parallel change.
 
 ### Tracer bullets
 
@@ -112,7 +112,7 @@ Decisions: The [Page state, storage and runtime contract](phase1/content-contrac
 
 Outcome: Real users can enter the admin with the correct permissions, and sensitive actions have the required controls.
 
-Tickets: issues #58 to #176 in the Phase 2 milestone, drafted in [phase2/tickets.md](phase2/tickets.md). Parallel lanes, waves and file ownership are in [phase2/work_plan.md](phase2/work_plan.md).
+Tickets: issues #58 to #176 in the Phase 2 milestone, drafted in [phase2/tickets.md](phase2/tickets.md). Integration branch: `phase-2`. Parallel lanes, waves and file ownership are in [phase2/work_plan.md](phase2/work_plan.md).
 
 - Add setup and server CLI commands, first-administrator creation, and account recovery without email.
 - Build sign-in, sign-out, secure sessions, CSRF controls, invitations, password resets through SMTP, and the PRD's advisory password warnings with explicit confirmation.
@@ -137,7 +137,7 @@ Dependencies: Phase 1. Covers FR-01, FR-02, FR-09 and the foundation of FR-07, F
 
 Outcome: An administrator defines content in the interface, and an editor creates, finds, previews and publishes it without code changes.
 
-Tickets: drafted as P3-01 to P3-70 in [phase3/tickets.md](phase3/tickets.md), with lanes and waves in [phase3/work_plan.md](phase3/work_plan.md). Issues are opened after Phase 2 closes.
+Tickets: drafted as P3-01 to P3-70 in [phase3/tickets.md](phase3/tickets.md), with lanes and waves in [phase3/work_plan.md](phase3/work_plan.md). Integration branch: `phase-3`. Planning and ticket analysis run on the draft now; GitHub issues are opened from the analyzed draft as soon as the layout is settled, without waiting for Phase 2 to close. Implementation tickets that need Phase 2 code start after that code is merged forward into `phase-3`.
 
 - Build the content type and field builder, including labels, groups, ordering, help text, required state, validation, and supported single or multiple values.
 - Add the non-file launch fields: short, long and rich text; email; links; relationships; timezone-aware date and time; integer and decimal numbers; yes or no; single and multiple choice; phone; structured address and optional coordinates.
@@ -154,7 +154,7 @@ Tickets: drafted as P3-01 to P3-70 in [phase3/tickets.md](phase3/tickets.md), wi
 
 Exit evidence: An editor completes the core publishing journey for all five types. A new administrator-defined type gets usable screens without code. Draft changes and restored snapshots stay private until publication; unpublishing removes public access.
 
-Dependencies: Phase 2. Covers FR-03, FR-05, FR-06, FR-13, the basic editing portion of FR-04, and most of FR-08 and FR-14.
+Dependencies: Phase 2 code, merged forward into `phase-3` as it lands; planning is independent. Covers FR-03, FR-05, FR-06, FR-13, the basic editing portion of FR-04, and most of FR-08 and FR-14.
 
 ## Phase 4. Complete images, documents and file retention
 

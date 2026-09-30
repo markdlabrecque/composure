@@ -1,6 +1,6 @@
 # Phase 3 work plan: parallel lanes
 
-Status: Draft written 2026-09-30 from `docs/phase3/tickets.md`. Issue numbers are added when the tickets are opened after Phase 2 closes. Read `docs/phase2/work_plan.md` for the lane and wave definitions; the same rules apply.
+Status: Draft written 2026-09-30 from `docs/phase3/tickets.md`. Integration branch `phase-3`, cut from `develop` (now `phase-1`) on 2026-09-30. Ticket ids stay `P3-nn` until the `analyze-ticket` skill has settled the layout; issue numbers are added when the tickets are opened, which does not wait for Phase 2 to close. Read `docs/phase2/work_plan.md` for the lane and wave definitions; the same rules apply.
 
 ## Rules that keep lanes from colliding
 
@@ -9,7 +9,7 @@ Status: Draft written 2026-09-30 from `docs/phase3/tickets.md`. Issue numbers ar
 3. **Contract sections are separate files.** P3-01a and P3-02a create the two indexes; every other contract ticket adds one section file and one index link.
 4. **Builder and editor are different files.** Builder routes live in `internal/web/model.go`; editorial routes in `internal/web/content.go`, `form.go` and `history.go`. Only route registrations touch `web.go`.
 5. **Rich text is gated on P3-04.** Tiptap plus `bluemonday`, decided 2026-09-30. No rich text ticket starts until Mark signs the P3-04 review checklist.
-6. **Rebase on `develop` before review.** A green branch does not prove integration with a parallel lane.
+6. **Rebase on `phase-3` before review.** A green branch does not prove integration with a parallel lane.
 
 ## Lanes
 

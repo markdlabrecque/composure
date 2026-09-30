@@ -63,7 +63,8 @@ libraries with `.venv-browser/bin/python -m playwright install-deps chromium`,
 then invokes `bash scripts/test-phase1` once. The phase gate runs the shared Go
 runner and focused browser journey in sequence. Missing browser prerequisites
 or a failed browser assertion fail the same required check. Configure
-`Composure checks` as a required status check for the base branch, `develop`.
+`Composure checks` as a required status check on every phase integration
+branch (`phase-1`, `phase-2`, `phase-3`).
 
 For an explicit CI failure demonstration, a maintainer adds the
 `ci-failure-probe` label to the pull request. Label changes rerun the same
