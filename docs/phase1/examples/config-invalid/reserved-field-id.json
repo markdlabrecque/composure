@@ -1,0 +1,10 @@
+{
+  "format_version": 1,
+  "content_types": [{
+    "id": "page",
+    "label": "Page",
+    "fields": [
+      {"id": "title", "kind": "short_text", "label": "Title", "help_text": "", "required": false, "order": 10}
+    ]
+  }]
+}
