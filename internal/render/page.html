@@ -1,5 +1,5 @@
 <!doctype html>
 <html lang="en">
 <head><meta charset="utf-8"><title>{{.Title}}</title><style>.long-text { white-space: pre-line; }</style></head>
-<body>{{if .Preview}}<aside class="preview-context" role="status"><strong>Preview</strong><p>Latest saved draft</p></aside>{{end}}<main><h1>{{.Title}}</h1>{{range .PageFields}}<section class="field {{.Kind}}" data-field="{{.ID}}">{{if eq .Kind "long_text"}}<div class="long-text">{{.Value}}</div>{{else}}<p>{{.Value}}</p>{{end}}</section>{{end}}</main></body>
+<body>{{if .Preview}}<div class="preview-context" role="status"><strong>Preview</strong><p>Latest saved draft</p></div>{{end}}<main><h1>{{.Title}}</h1>{{range .PageFields}}<section class="field {{.Kind}}" data-field="{{.ID}}">{{if eq .Kind "long_text"}}<div class="long-text">{{.Value}}</div>{{else}}<p>{{.Value}}</p>{{end}}</section>{{end}}</main></body>
 </html>

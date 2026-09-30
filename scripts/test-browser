@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+python="$repo_root/.venv-browser/bin/python"
+axe="$repo_root/tests/browser/vendor/axe.min.js"
+
+if [[ ! -x "$python" ]]; then
+    echo "Pinned browser-test Python is missing; run scripts/install-browser-tests." >&2
+    exit 1
+fi
+if [[ ! -f "$axe" ]]; then
+    echo "Pinned axe-core asset is missing; run scripts/install-browser-tests." >&2
+    exit 1
+fi
+
+cd "$repo_root"
+COMPOSURE_AXE_PATH="$axe" "$python" tests/browser/check_setup.py
+COMPOSURE_AXE_PATH="$axe" "$python" -m unittest discover -s tests/browser -p 'test_*.py' -v

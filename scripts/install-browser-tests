@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+venv="$repo_root/.venv-browser"
+axe_dir="$repo_root/tests/browser/vendor"
+axe_file="$axe_dir/axe.min.js"
+axe_url="https://cdnjs.cloudflare.com/ajax/libs/axe-core/4.11.0/axe.min.js"
+axe_sha256="e9e5863c33a874f09bc01acd9234b7e3c871479f5eef8802fa582544465e6d01"
+
+if ! command -v python3 >/dev/null 2>&1; then
+    echo "Python 3 is required to install the browser test tools." >&2
+    exit 1
+fi
+if ! python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 9) else 1)'; then
+    echo "Playwright 1.58.0 requires Python 3.9 or newer." >&2
+    exit 1
+fi
+
+if [[ ! -x "$venv/bin/python" ]]; then
+    python3 -m venv "$venv" || {
+        echo "Could not create $venv; install Python 3 with venv support." >&2
+        exit 1
+    }
+fi
+
+"$venv/bin/python" -m pip install --disable-pip-version-check -r "$repo_root/tests/browser/requirements.txt"
+"$venv/bin/python" -m playwright install chromium
+
+if ! command -v curl >/dev/null 2>&1; then
+    echo "curl is required to download the pinned axe-core asset." >&2
+    exit 1
+fi
+mkdir -p "$axe_dir"
+axe_tmp="$(mktemp "$axe_dir/axe.min.js.XXXXXX")"
+trap 'rm -f "$axe_tmp"' EXIT
+curl -fsSL "$axe_url" -o "$axe_tmp"
+actual_sha256="$("$venv/bin/python" -c 'import hashlib,sys; print(hashlib.sha256(open(sys.argv[1], "rb").read()).hexdigest())' "$axe_tmp")"
+if [[ "$actual_sha256" != "$axe_sha256" ]]; then
+    echo "Downloaded axe-core checksum mismatch: expected $axe_sha256, got $actual_sha256." >&2
+    exit 1
+fi
+mv "$axe_tmp" "$axe_file"
+trap - EXIT
+echo "Installed Playwright 1.58.0 with Chromium revision 1208 and axe-core 4.11.0."
