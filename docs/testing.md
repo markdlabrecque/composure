@@ -18,6 +18,10 @@ use the printed address to open `/example`. Stop the server with Ctrl-C.
 Run `go test ./...` for Go tests. Run
 `go test ./... -run TestPhase1InitializeAndServe -count=1` for the focused
 process tests. These build and start the real CLI with temporary SQLite sites.
+For publication regressions, run
+`go test ./tests/integration -run 'TestPhase1PublishPage|TestPublishTicket9' -count=1`.
+This exercises the real admin/public handlers and SQLite publication
+transaction, including rollback after a test-only SQLite trigger failure.
 
 Run `bash scripts/test` from any working directory. The runner finds the
 repository from its own location and requires Python 3. While the repository

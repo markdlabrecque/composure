@@ -1,6 +1,7 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="stylesheet" href="/admin/static/admin.css"><title>{{.Heading}}</title></head><body>
 <main><p><a href="/admin/pages">Pages</a></p><h1>{{.Heading}}</h1>
+{{if .Notice}}<p role="status">{{.Notice}}</p>{{end}}
 {{if .Owner}}<p data-error-code="path_taken">That path is already used by <a href="/admin/pages/{{.Owner.ID}}/edit">{{.Owner.Title}}</a>.</p>{{end}}
 {{range .Errors}}<p data-error-code="{{.Code}}">{{.Message}}</p>{{end}}
 <form method="post" action="{{.Action}}">
@@ -12,4 +13,5 @@
 {{else}}<textarea id="page-field-{{.ID}}" name="{{.ID}}"{{if .HelpText}} aria-describedby="page-field-{{.ID}}-help"{{end}}{{if .Required}} required{{end}}>{{.TextareaValue}}</textarea>{{end}}
 {{if .HelpText}}<p id="page-field-{{.ID}}-help">{{.HelpText}}</p>{{end}}</div>{{end}}
 <button type="submit">{{.SubmitLabel}}</button></form>
-{{if .PreviewURL}}<p><a href="{{.PreviewURL}}">Preview saved draft</a></p><p>Preview shows the latest saved draft. Save your changes before previewing them.</p>{{end}}</main></body></html>
+{{if .PreviewURL}}<p><a href="{{.PreviewURL}}">Preview saved draft</a></p><p>Preview shows the latest saved draft. Save your changes before previewing them.</p>{{end}}
+{{if .PublishURL}}<form method="post" action="{{.PublishURL}}"><input type="hidden" name="draft_revision" value="{{.Revision}}"><button type="submit">Publish saved draft</button></form>{{end}}</main></body></html>

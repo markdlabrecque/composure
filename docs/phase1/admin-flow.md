@@ -11,14 +11,27 @@ GET  /admin/pages                   → Page list → /admin/pages/new
 GET  /admin/pages/new               → configured Page form
 POST /admin/pages                   → 303 /admin/pages/{id}/edit
 GET  /admin/pages/{id}/edit         → editable saved draft form
-                                      Preview saved draft link and save-first guidance
+                                      Preview saved draft link, save-first guidance,
+                                      first-publication action for unpublished Pages
 POST /admin/pages/{id}              → save draft        (#7)
 GET  /admin/pages/{id}/preview      → latest saved draft rendered by the public Page template (#8)
                                       preview context is outside the shared <main> content
-
-Planned:
-POST /admin/pages/{id}/publish      → publish snapshot  (#9)
+POST /admin/pages/{id}/publish      → validate current stored draft/config, then atomically
+                                      create the first immutable snapshot and claim its path
+                                      303 to edit with a publication notice
 ```
+
+The publish form submits only the current `draft_revision`; unsaved values are
+not sent. Publication revalidates the stored draft against the active
+configuration inside the same SQLite write transaction that inserts the
+snapshot, claims the route, and moves the item's published pointer. A path
+already owned by another Page returns `409 path_taken` with the owning Page's
+title and edit link. Invalid stored values return `422`; stale revisions and
+owned paths return `409`. GET and other methods cannot publish.
+
+Phase 1 supports only first publication. A Page that already has a published
+snapshot cannot create another snapshot yet; republishing and history belong
+to the later snapshot-history work.
 
 Preview and the public route share the same Page renderer and content markup.
 Preview reads only the stored draft, returns `Cache-Control: no-store`,
