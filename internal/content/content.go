@@ -4,6 +4,7 @@ package content
 import (
 	"context"
 	"crypto/rand"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math/big"
@@ -13,12 +14,15 @@ import (
 	"time"
 	"unicode"
 	"unicode/utf8"
+
+	"github.com/markdlabrecque/composure/internal/config"
 )
 
 var ErrNotFound = errors.New("content not found")
 var ErrPathTaken = errors.New("path is already owned")
 var ErrStaleDraft = errors.New("draft revision is stale")
 var ErrPathChangeUnsupported = errors.New("published Page path changes are unsupported")
+var ErrAlreadyPublished = errors.New("Page is already published")
 
 type PathChangeUnsupportedError struct {
 	OwnedPath string
@@ -51,6 +55,13 @@ type ItemDraft struct {
 	Title  string
 	Path   string
 	Fields map[string]string
+}
+
+// StoredDraft carries the untrusted persisted representation that Publish
+// revalidates against the active config while holding its write transaction.
+type StoredDraft struct {
+	Title, Path string
+	FieldsJSON  []byte
 }
 
 type Item struct {
@@ -89,6 +100,12 @@ type FieldError struct {
 	Code  string
 }
 
+// ValidationError reports stored values that no longer satisfy the
+// active Page configuration. It is returned before publication writes begin.
+type ValidationError struct{ Problems []FieldError }
+
+func (e *ValidationError) Error() string { return "stored Page draft is invalid" }
+
 // Repository resolves public snapshots and owns bounded Page draft operations.
 type Repository interface {
 	PublishedByPath(context.Context, string) (Snapshot, error)
@@ -97,6 +114,7 @@ type Repository interface {
 	GetItem(context.Context, string) (Item, error)
 	CreateItem(context.Context, ItemDraft, time.Time) (string, error)
 	SaveDraft(context.Context, string, int, ItemDraft, time.Time, string) (changed bool, err error)
+	Publish(context.Context, string, int, time.Time, string, func(ActiveConfig, StoredDraft) (ItemDraft, []FieldError)) (Snapshot, error)
 }
 
 var pagePath = regexp.MustCompile(`^/$|^(/[a-z0-9]+(-[a-z0-9]+)*){1,8}$`)
@@ -150,6 +168,58 @@ func PreparePageDraft(definition PageDefinition, submitted map[string]string) (I
 			problems = append(problems, FieldError{Field: field.ID, Code: "too_long"})
 		}
 		draft.Fields[field.ID] = value
+	}
+	return draft, problems
+}
+
+// ValidateStoredPageDraft strictly decodes stored fields and reapplies current
+// configuration rules. Unlike form preparation, it rejects unknown keys and
+// values that are not strings rather than silently dropping them.
+func ValidateStoredPageDraft(active ActiveConfig, stored StoredDraft) (ItemDraft, []FieldError) {
+	document, err := config.Decode(active.Document)
+	if err != nil {
+		return ItemDraft{}, []FieldError{{Field: "configuration", Code: "invalid_config"}}
+	}
+	definition := PageDefinition{Revision: active.Revision}
+	for _, field := range document.ContentTypes[0].Fields {
+		definition.Fields = append(definition.Fields, FieldDefinition{
+			ID: field.ID, Kind: field.Kind, Label: field.Label, HelpText: field.HelpText,
+			Required: field.Required, Order: field.Order.String(),
+		})
+	}
+	SortPageFields(definition.Fields)
+
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(stored.FieldsJSON, &raw); err != nil || raw == nil {
+		return ItemDraft{}, []FieldError{{Field: "fields", Code: "invalid_stored_draft"}}
+	}
+	allowed := make(map[string]bool, len(definition.Fields))
+	values := map[string]string{"title": stored.Title, "path": stored.Path}
+	for _, field := range definition.Fields {
+		allowed[field.ID] = true
+	}
+	for id, encoded := range raw {
+		if !allowed[id] {
+			return ItemDraft{}, []FieldError{{Field: id, Code: "invalid_stored_draft"}}
+		}
+		if len(encoded) == 0 || encoded[0] != '"' {
+			return ItemDraft{}, []FieldError{{Field: id, Code: "invalid_stored_draft"}}
+		}
+		var value string
+		if err := json.Unmarshal(encoded, &value); err != nil {
+			return ItemDraft{}, []FieldError{{Field: id, Code: "invalid_stored_draft"}}
+		}
+		values[id] = value
+	}
+	draft, problems := PreparePageDraft(definition, values)
+	if len(problems) == 0 {
+		// Stored values already passed through form normalization when written.
+		// Preserve their exact strings so preview and the published snapshot agree.
+		for _, field := range definition.Fields {
+			if value, ok := values[field.ID]; ok {
+				draft.Fields[field.ID] = value
+			}
+		}
 	}
 	return draft, problems
 }

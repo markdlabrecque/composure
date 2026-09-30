@@ -47,7 +47,9 @@ type conflictOwner struct {
 
 type pageFormData struct {
 	Heading, Action, Revision, SubmitLabel string
+	Notice                                 string
 	PreviewURL                             string
+	PublishURL                             string
 	Fields                                 []formField
 	Values                                 map[string]string
 	Errors                                 []formProblem
@@ -149,7 +151,11 @@ func Handler(repository content.Repository, port string) http.Handler {
 			http.Error(w, "cannot load Page configuration", http.StatusInternalServerError)
 			return
 		}
-		writeTemplate(w, pageFormTemplate, editFormData(item, definition, nil, nil, strconv.Itoa(item.Revision)))
+		data := editFormData(item, definition, nil, nil, strconv.Itoa(item.Revision))
+		if r.URL.Query().Get("notice") == "published" {
+			data.Notice = "Page published."
+		}
+		writeTemplate(w, pageFormTemplate, data)
 	})
 	mux.HandleFunc("GET /admin/pages/{id}/preview", func(w http.ResponseWriter, r *http.Request) {
 		item, err := repository.GetItem(r.Context(), r.PathValue("id"))
@@ -231,6 +237,75 @@ func Handler(repository content.Repository, port string) http.Handler {
 		}
 		http.Error(w, "cannot save Page", http.StatusInternalServerError)
 	})
+	mux.HandleFunc("POST /admin/pages/{id}/publish", func(w http.ResponseWriter, r *http.Request) {
+		if !parseAdminForm(w, r) {
+			return
+		}
+		revisionText := r.PostForm.Get("draft_revision")
+		revision, parseErr := strconv.Atoi(revisionText)
+		if parseErr != nil || revision <= 0 {
+			writePublishProblem(w, r, repository, http.StatusUnprocessableEntity,
+				formProblem{Field: "draft_revision", Code: "invalid_revision", Message: "Reload the saved draft before publishing."}, nil)
+			return
+		}
+		_, err := repository.Publish(r.Context(), r.PathValue("id"), revision, time.Now(), "local-prototype", content.ValidateStoredPageDraft)
+		if err == nil {
+			http.Redirect(w, r, "/admin/pages/"+r.PathValue("id")+"/edit?notice=published", http.StatusSeeOther)
+			return
+		}
+		var taken *content.PathTakenError
+		if errors.As(err, &taken) {
+			writePublishProblem(w, r, repository, http.StatusConflict,
+				formProblem{Code: "path_taken", Message: "That path is already used by another Page."}, &conflictOwner{ID: taken.OwnerID, Title: taken.OwnerTitle})
+			return
+		}
+		if errors.Is(err, content.ErrStaleDraft) {
+			writePublishProblem(w, r, repository, http.StatusConflict,
+				formProblem{Code: "stale_draft", Message: "This Page changed after the form was loaded. Review the saved draft and reload before publishing."}, nil)
+			return
+		}
+		if errors.Is(err, content.ErrPathChangeUnsupported) {
+			var pathChange *content.PathChangeUnsupportedError
+			errors.As(err, &pathChange)
+			message := "Changing a published Page's path needs redirects, which arrive in a later phase."
+			if pathChange != nil {
+				message += " Keep " + pathChange.OwnedPath + " for now."
+			}
+			writePublishProblem(w, r, repository, http.StatusUnprocessableEntity,
+				formProblem{Field: "path", Code: "path_change_unsupported", Message: message}, nil)
+			return
+		}
+		var validation *content.ValidationError
+		if errors.As(err, &validation) {
+			item, itemErr := repository.GetItem(r.Context(), r.PathValue("id"))
+			definition, configErr := activePageDefinition(r.Context(), repository)
+			if itemErr != nil {
+				// Corrupt persisted fields can prevent GetItem from decoding the
+				// draft. Still return the validation response without rewriting it.
+				item = content.Item{ID: r.PathValue("id"), Revision: revision}
+			}
+			if configErr != nil {
+				definition = content.PageDefinition{}
+			}
+			problems := make([]formProblem, 0, len(validation.Problems))
+			for _, problem := range validation.Problems {
+				problems = append(problems, formProblem{Field: problem.Field, Code: problem.Code, Message: validationMessage(problem, definition)})
+			}
+			writeTemplateStatus(w, http.StatusUnprocessableEntity, pageFormTemplate,
+				editFormData(item, definition, nil, problems, strconv.Itoa(revision)))
+			return
+		}
+		if errors.Is(err, content.ErrAlreadyPublished) {
+			writePublishProblem(w, r, repository, http.StatusConflict,
+				formProblem{Code: "already_published", Message: "This Page already has its first published snapshot."}, nil)
+			return
+		}
+		if errors.Is(err, content.ErrNotFound) {
+			http.NotFound(w, r)
+			return
+		}
+		http.Error(w, "cannot publish Page", http.StatusInternalServerError)
+	})
 	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
 		snapshot, err := repository.PublishedByPath(r.Context(), r.URL.Path)
 		if errors.Is(err, content.ErrNotFound) {
@@ -250,7 +325,7 @@ func Handler(repository content.Repository, port string) http.Handler {
 		_, _ = w.Write(html)
 	})
 	methodBoundary := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if isPageSavePath(r.URL.Path) && r.Method != http.MethodPost {
+		if (isPageSavePath(r.URL.Path) || isPagePublishPath(r.URL.Path)) && r.Method != http.MethodPost {
 			w.Header().Set("Allow", http.MethodPost)
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
@@ -283,6 +358,35 @@ func isPageSavePath(path string) bool {
 	}
 	id := strings.TrimPrefix(path, prefix)
 	return id != "" && id != "new" && !strings.Contains(id, "/")
+}
+
+func isPagePublishPath(path string) bool {
+	const prefix = "/admin/pages/"
+	if !strings.HasPrefix(path, prefix) {
+		return false
+	}
+	id := strings.TrimPrefix(path, prefix)
+	return strings.HasSuffix(id, "/publish") && strings.Count(id, "/") == 1 && strings.TrimSuffix(id, "/publish") != "" && strings.TrimSuffix(id, "/publish") != "new"
+}
+
+func writePublishProblem(w http.ResponseWriter, r *http.Request, repository content.Repository, status int, problem formProblem, owner *conflictOwner) {
+	item, err := repository.GetItem(r.Context(), r.PathValue("id"))
+	if errors.Is(err, content.ErrNotFound) {
+		http.NotFound(w, r)
+		return
+	}
+	if err != nil {
+		http.Error(w, "cannot load Page", http.StatusInternalServerError)
+		return
+	}
+	definition, err := activePageDefinition(r.Context(), repository)
+	if err != nil {
+		http.Error(w, "cannot load Page configuration", http.StatusInternalServerError)
+		return
+	}
+	data := editFormData(item, definition, nil, []formProblem{problem}, strconv.Itoa(item.Revision))
+	data.Owner = owner
+	writeTemplateStatus(w, status, pageFormTemplate, data)
 }
 
 func parseAdminForm(w http.ResponseWriter, r *http.Request) bool {
@@ -368,6 +472,9 @@ func editFormData(item content.Item, definition content.PageDefinition, values m
 	data.Heading = "Edit Page"
 	data.Action = "/admin/pages/" + item.ID
 	data.PreviewURL = data.Action + "/preview"
+	if !item.Published {
+		data.PublishURL = "/admin/pages/" + item.ID + "/publish"
+	}
 	data.Revision = revision
 	data.SubmitLabel = "Save changes"
 	return data

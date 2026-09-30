@@ -188,6 +188,93 @@ func (s *Store) SaveDraft(ctx context.Context, id string, expectedRevision int, 
 	return true, nil
 }
 
+// Publish makes the first immutable snapshot and claims its public path in one
+// BEGIN IMMEDIATE transaction. Validation receives only values read inside
+// that transaction, including the current active configuration.
+func (s *Store) Publish(ctx context.Context, id string, expectedRevision int, at time.Time, actor string, validate func(content.ActiveConfig, content.StoredDraft) (content.ItemDraft, []content.FieldError)) (content.Snapshot, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return content.Snapshot{}, err
+	}
+	defer tx.Rollback()
+
+	var stored content.StoredDraft
+	var fields, typeID string
+	var revision int
+	var published sql.NullString
+	if err := tx.QueryRowContext(ctx, `
+		SELECT type_id,title,path,fields,draft_revision,published_snapshot_id
+		FROM items WHERE id=?`, id).Scan(&typeID, &stored.Title, &stored.Path, &fields, &revision, &published); errors.Is(err, sql.ErrNoRows) {
+		return content.Snapshot{}, content.ErrNotFound
+	} else if err != nil {
+		return content.Snapshot{}, err
+	}
+	if revision != expectedRevision {
+		return content.Snapshot{}, content.ErrStaleDraft
+	}
+	if typeID != "page" {
+		return content.Snapshot{}, &content.ValidationError{Problems: []content.FieldError{{Field: "type", Code: "invalid_stored_draft"}}}
+	}
+	stored.FieldsJSON = []byte(fields)
+
+	var active content.ActiveConfig
+	if err := tx.QueryRowContext(ctx, "SELECT document,revision FROM active_config WHERE singleton=1").Scan(&active.Document, &active.Revision); err != nil {
+		return content.Snapshot{}, err
+	}
+	draft, problems := validate(active, stored)
+	if len(problems) > 0 {
+		return content.Snapshot{}, &content.ValidationError{Problems: problems}
+	}
+
+	if published.Valid {
+		var ownedPath string
+		if err := tx.QueryRowContext(ctx, "SELECT path FROM routes WHERE item_id=? AND kind='item'", id).Scan(&ownedPath); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return content.Snapshot{}, fmt.Errorf("published Page %q has no owned route", id)
+			}
+			return content.Snapshot{}, err
+		}
+		if draft.Path != ownedPath {
+			return content.Snapshot{}, &content.PathChangeUnsupportedError{OwnedPath: ownedPath}
+		}
+		return content.Snapshot{}, content.ErrAlreadyPublished
+	}
+
+	var ownerID, ownerTitle string
+	err = tx.QueryRowContext(ctx, `SELECT i.id,i.title FROM routes r JOIN items i ON i.id=r.item_id WHERE r.path=?`, draft.Path).Scan(&ownerID, &ownerTitle)
+	if err == nil {
+		return content.Snapshot{}, &content.PathTakenError{OwnerID: ownerID, OwnerTitle: ownerTitle}
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return content.Snapshot{}, err
+	}
+
+	snapshotID, err := content.NewID(at)
+	if err != nil {
+		return content.Snapshot{}, err
+	}
+	timestamp := at.UTC().Format("2006-01-02T15:04:05.000Z")
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO snapshots(id,item_id,seq,type_id,config_revision,source_draft_revision,title,path,fields,published_at,published_by)
+		VALUES(?,?,1,'page',?,?,?,?,?,?,?)`, snapshotID, id, active.Revision, expectedRevision, draft.Title, draft.Path, string(stored.FieldsJSON), timestamp, actor); err != nil {
+		return content.Snapshot{}, err
+	}
+	if _, err := tx.ExecContext(ctx, "INSERT INTO routes(path,kind,item_id,claimed_at) VALUES(?,'item',?,?)", draft.Path, id, timestamp); err != nil {
+		var actualID, actualTitle string
+		if lookupErr := tx.QueryRowContext(ctx, `SELECT i.id,i.title FROM routes r JOIN items i ON i.id=r.item_id WHERE r.path=?`, draft.Path).Scan(&actualID, &actualTitle); lookupErr == nil {
+			return content.Snapshot{}, &content.PathTakenError{OwnerID: actualID, OwnerTitle: actualTitle}
+		}
+		return content.Snapshot{}, err
+	}
+	if _, err := tx.ExecContext(ctx, "UPDATE items SET published_snapshot_id=? WHERE id=? AND published_snapshot_id IS NULL", snapshotID, id); err != nil {
+		return content.Snapshot{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return content.Snapshot{}, err
+	}
+	return content.Snapshot{ID: snapshotID, ItemID: id, Title: draft.Title, Path: draft.Path, Fields: draft.Fields}, nil
+}
+
 func equalFields(a, b map[string]string) bool {
 	if len(a) != len(b) {
 		return false
