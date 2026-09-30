@@ -145,7 +145,7 @@ func TestPhase1ConfigRoundTrip(t *testing.T) {
 			t.Errorf("destination copied source %s", table)
 		}
 	}
-	if scalar[string](t, bdb, "SELECT id FROM site") == scalar[string](t, adb, "SELECT id FROM site") {
+	if scalar[string](t, bdb, "SELECT site_id FROM site") == scalar[string](t, adb, "SELECT site_id FROM site") {
 		t.Error("destination copied source identity")
 	}
 	bbase, stop := serve(t, b)

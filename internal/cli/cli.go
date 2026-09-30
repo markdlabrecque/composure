@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"os"
 	"strings"
 	"time"
 
@@ -49,9 +50,11 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	dir := flags.String("site", "", "site directory")
 	var example, apply *bool
 	var address *string
+	var configFile *string
 	if command == "init" {
 		example = flags.Bool("example", false, "add one published example Page")
 		apply = flags.Bool("apply", false, "apply the initialization plan")
+		configFile = flags.String("config", "", "Page configuration file")
 	} else {
 		address = flags.String("addr", "127.0.0.1:8080", "loopback listen address")
 	}
@@ -63,7 +66,22 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	}
 	ctx := context.Background()
 	if command == "init" {
-		if err := site.Init(ctx, *dir, *example, *apply, stdout, time.Now); err != nil {
+		selected := config.Default
+		if *configFile != "" {
+			var err error
+			selected, err = os.ReadFile(*configFile)
+			if err != nil {
+				return fail(1, fmt.Errorf("io_error: cannot read configuration file: %v", err))
+			}
+			if _, err = config.Validate(selected); err != nil {
+				var validation *config.ValidationError
+				if errors.As(err, &validation) {
+					return fail(validation.ExitCode, validation)
+				}
+				return fail(3, err)
+			}
+		}
+		if err := site.InitWithConfig(ctx, *dir, selected, *example, *apply, stdout, time.Now); err != nil {
 			return fail(exitCode(err), err)
 		}
 		return 0
