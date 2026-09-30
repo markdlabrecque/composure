@@ -160,6 +160,10 @@ func admin6Link(t *testing.T, page, target string) {
 	}
 	t.Errorf("missing clickable link to %s", target)
 }
+func admin6Newlines(value string) string {
+	return strings.ReplaceAll(strings.ReplaceAll(value, "\r\n", "\n"), "\r", "\n")
+}
+
 func admin6Retains(t *testing.T, page string, values url.Values) {
 	t.Helper()
 	for _, name := range []string{"title", "path", "body", "strapline"} {
@@ -179,7 +183,12 @@ func admin6Retains(t *testing.T, page string, values url.Values) {
 				tail := page[start:]
 				end := strings.Index(strings.ToLower(tail), "</textarea>")
 				if end >= 0 {
-					found = html.UnescapeString(tail[:end]) == values.Get(name)
+					// HTML normalizes source line endings and ignores the first LF
+					// immediately after a textarea start tag. Raw source equality
+					// would miss the user's lost leading newline on redisplay.
+					got := html.UnescapeString(admin6Newlines(tail[:end]))
+					got = admin6Newlines(strings.TrimPrefix(got, "\n"))
+					found = got == admin6Newlines(values.Get(name))
 				}
 			}
 		}
@@ -451,4 +460,27 @@ func TestAdminCreateTicket6DefinitionWithoutBody(t *testing.T) {
 		t.Fatal("configured create did not persist")
 	}
 	equalJSON(t, scalar[string](t, db, "SELECT fields FROM items"), []byte(`{"summary":"Persist this field"}`))
+}
+
+// Invalid creation must redisplay the browser-visible textarea value, including
+// its first newline, without relying on a create write while storage is pending.
+func TestAdminCreateTicket6ValidationRetainsLeadingTextareaNewline(t *testing.T) {
+	site := initSite(t, true)
+	db := openDB(t, site)
+	before := admin6State(t, db)
+	base, _ := serve(t, site)
+	for _, tc := range []struct{ name, body string }{
+		{"leading_lf", "\nLeading line"},
+		{"leading_crlf", "\r\nLeading line\r\nSecond line"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			values := url.Values{"title": {"Keep title"}, "path": {"/admin/reserved"}, "body": {tc.body}}
+			_, page := admin6Post(t, base, values, 422)
+			if !strings.Contains(page, `data-error-code="path_reserved"`) && !strings.Contains(page, `data-error-code='path_reserved'`) {
+				t.Error("missing path_reserved validation error")
+			}
+			admin6Retains(t, page, values)
+			admin6Unchanged(t, db, before)
+		})
+	}
 }
