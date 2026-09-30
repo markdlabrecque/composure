@@ -47,6 +47,7 @@ type conflictOwner struct {
 
 type pageFormData struct {
 	Heading, Action, Revision, SubmitLabel string
+	PreviewURL                             string
 	Fields                                 []formField
 	Values                                 map[string]string
 	Errors                                 []formProblem
@@ -149,6 +150,25 @@ func Handler(repository content.Repository, port string) http.Handler {
 			return
 		}
 		writeTemplate(w, pageFormTemplate, editFormData(item, definition, nil, nil, strconv.Itoa(item.Revision)))
+	})
+	mux.HandleFunc("GET /admin/pages/{id}/preview", func(w http.ResponseWriter, r *http.Request) {
+		item, err := repository.GetItem(r.Context(), r.PathValue("id"))
+		if errors.Is(err, content.ErrNotFound) {
+			http.NotFound(w, r)
+			return
+		}
+		if err != nil {
+			http.Error(w, "cannot load Page", http.StatusInternalServerError)
+			return
+		}
+		html, err := render.Preview(content.Snapshot{ItemID: item.ID, Title: item.Title, Path: item.Path, Fields: item.Fields})
+		if err != nil {
+			http.Error(w, "cannot render Page", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("X-Robots-Tag", "noindex")
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write(html)
 	})
 	mux.HandleFunc("POST /admin/pages/{id}", func(w http.ResponseWriter, r *http.Request) {
 		if !parseAdminForm(w, r) {
@@ -347,6 +367,7 @@ func editFormData(item content.Item, definition content.PageDefinition, values m
 	data := newFormData(definition, values, problems, nil)
 	data.Heading = "Edit Page"
 	data.Action = "/admin/pages/" + item.ID
+	data.PreviewURL = data.Action + "/preview"
 	data.Revision = revision
 	data.SubmitLabel = "Save changes"
 	return data
