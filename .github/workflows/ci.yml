@@ -2,6 +2,7 @@ name: CI
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
   push:
     branches:
       - main
@@ -30,4 +31,6 @@ jobs:
           go-version-file: go.mod
 
       - name: Run repository checks
+        env:
+          COMPOSURE_CI_FAILURE_PROBE: ${{ github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'ci-failure-probe') && '1' || '0' }}
         run: bash scripts/test
