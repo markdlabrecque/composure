@@ -38,6 +38,9 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		}
 		return 0
 	}
+	if command == "config" {
+		return runConfig(args[2:], stdout, stderr)
+	}
 	if command != "init" && command != "serve" {
 		return fail(2, fmt.Errorf("usage: composure <init|serve|version> [flags]"))
 	}
