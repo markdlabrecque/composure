@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+script_path=${BASH_SOURCE[0]}
+script_dir=${script_path%/*}
+if [[ "$script_dir" == "$script_path" ]]; then
+  script_dir=.
+fi
+if ! repo_root=$(cd -- "$script_dir/.." && pwd -P); then
+  echo "scripts/test-phase1: cannot locate the repository from $script_path" >&2
+  exit 2
+fi
+
+if [[ ! -f "$repo_root/go.mod" ]]; then
+  echo "scripts/test-phase1: a valid root Go application module is required" >&2
+  exit 1
+fi
+if [[ ! -f "$repo_root/scripts/test" ]]; then
+  echo "scripts/test-phase1: shared runner scripts/test is missing" >&2
+  exit 1
+fi
+if [[ ! -f "$repo_root/scripts/test-browser" ]]; then
+  echo "scripts/test-phase1: browser runner scripts/test-browser is missing" >&2
+  exit 1
+fi
+if ! command -v python3 >/dev/null 2>&1; then
+  echo "scripts/test-phase1: Python 3 is required for repository checks" >&2
+  exit 2
+fi
+
+if ! python3 - "$repo_root/go.mod" <<'PYTHON'
+from pathlib import Path
+import re
+import sys
+
+try:
+    contents = Path(sys.argv[1]).read_text(encoding="utf-8")
+except (OSError, UnicodeError):
+    raise SystemExit(1)
+
+module_path = r'(?:[^\s"`]+|"(?:[^"\\]|\\.)*"|`[^`]*`)'
+valid = any(
+    re.fullmatch(rf"\s*module\s+{module_path}\s*(?://.*)?", line)
+    for line in contents.splitlines()
+)
+raise SystemExit(0 if valid else 1)
+PYTHON
+then
+  echo "scripts/test-phase1: go.mod is missing a valid module directive" >&2
+  exit 1
+fi
+
+cd "$repo_root"
+bash scripts/test
+bash scripts/test-browser

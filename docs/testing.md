@@ -25,10 +25,14 @@ transaction, including rollback after a test-only SQLite trigger failure.
 For configuration-driven initialization and generated rendering, run
 `go test ./tests/integration ./internal/site -run 'TestPhase1ConfigRoundTrip|TestConfigInitTicket12' -count=1`.
 
-Run `bash scripts/test` from any working directory. The runner finds the
-repository from its own location and requires Python 3. While the repository
-contains only planning material, it checks the required documents and parses
-any JSON examples under `docs/phase1/examples/`.
+Run `bash scripts/test-phase1` from any working directory for the complete
+Phase 1 gate. It requires a valid root Go module, runs `bash scripts/test`
+once, then runs `bash scripts/test-browser` once. A failure stops the sequence
+and returns a nonzero status. The shared runner finds the repository from its
+own location and requires Python 3. While used on a repository containing only
+planning material, `bash scripts/test` checks the required documents and
+parses any JSON examples under `docs/phase1/examples/`; the Phase 1 entry point
+rejects that bootstrap-only mode.
 
 The real Chromium Page journey is a separate focused check. Run
 `scripts/install-browser-tests` once to create `.venv-browser`, install the
