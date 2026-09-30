@@ -32,7 +32,7 @@ The document is a JSON object with exactly these properties:
 
 In v1, `content_types` contains exactly one object, the Page definition. Its `id` is exactly `page`; `label` is a string. `fields` is an array of field definitions. Each field object has exactly the six properties `id`, `kind`, `label`, `help_text`, `required`, and `order`: IDs and labels are strings, `kind` is a string, `help_text` is a string, `required` is a boolean, and `order` is a positive integer. Field orders are unique within the type.
 
-Unknown properties at any level, unknown field kinds, additional content types, and invalid or duplicate IDs/references are errors; they are not ignored or discarded. There are no cross-field references in this minimal format. The only supported type ID is `page`. Supported kinds are `short_text` and `long_text`; both store string values keyed by field ID in `items.fields` and `snapshots.fields` (see the content contract). No other field properties, kinds, or content types are defined for phase 1.
+Unknown properties at any level, unknown field kinds, additional content types, and invalid or duplicate IDs are errors; they are not ignored or discarded. This format has no cross-field or cross-record references to validate. The only supported type ID is `page`. Supported kinds are `short_text` and `long_text`; both store string values keyed by field ID in `items.fields` and `snapshots.fields` (see the content contract). No other field properties, kinds, or content types are defined for phase 1.
 
 ## IDs and system metadata
 
