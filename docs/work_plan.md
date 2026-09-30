@@ -112,6 +112,8 @@ Decisions: The [Page state, storage and runtime contract](phase1/content-contrac
 
 Outcome: Real users can enter the admin with the correct permissions, and sensitive actions have the required controls.
 
+Tickets: issues #58 to #176 in the Phase 2 milestone, drafted in [phase2/tickets.md](phase2/tickets.md). Parallel lanes, waves and file ownership are in [phase2/work_plan.md](phase2/work_plan.md).
+
 - Add setup and server CLI commands, first-administrator creation, and account recovery without email.
 - Build sign-in, sign-out, secure sessions, CSRF controls, invitations, password resets through SMTP, and the PRD's advisory password warnings with explicit confirmation.
 - Enforce independent administrator and editor roles in direct requests and CLI operations. Preserve the last active administrator, revoke deactivated users' access, and retain attribution.
