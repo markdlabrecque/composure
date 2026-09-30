@@ -30,7 +30,14 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - name: Run repository checks
+      - name: Install pinned browser tests
+        run: bash scripts/install-browser-tests
+
+      - name: Install Chromium system dependencies
+        run: .venv-browser/bin/python -m playwright install-deps chromium
+
+      - name: Run Phase 1 gate
         env:
-          COMPOSURE_CI_FAILURE_PROBE: ${{ github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'ci-failure-probe') && '1' || '0' }}
-        run: bash scripts/test
+          COMPOSURE_CI_FAILURE_PROBE: '0'
+          COMPOSURE_BROWSER_FAILURE_PROBE: ${{ github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'ci-failure-probe') && '1' || '0' }}
+        run: bash scripts/test-phase1

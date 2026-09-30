@@ -56,17 +56,34 @@ It then runs `go build ./...`, `go vet ./...`, `go test ./...`, and
 `go test -race ./...`. Go source without a valid root module fails instead of
 selecting bootstrap checks.
 
-The current hosted CI workflow runs `bash scripts/test` for pull requests,
-pushes to `main`, and manual dispatch. The complete `bash scripts/test-phase1`
-gate, including the browser check, is local; hosted integration remains ticket
-32. Configure `Composure checks` as a required status check for the base
-branch, `develop`.
+The hosted `Composure checks` workflow runs on pull requests, pushes to `main`,
+and manual dispatch. It installs the pinned browser test environment with
+`bash scripts/install-browser-tests`, installs Chromium's Ubuntu system
+libraries with `.venv-browser/bin/python -m playwright install-deps chromium`,
+then invokes `bash scripts/test-phase1` once. The phase gate runs the shared Go
+runner and focused browser journey in sequence. Missing browser prerequisites
+or a failed browser assertion fail the same required check. Configure
+`Composure checks` as a required status check for the base branch, `develop`.
 
 For an explicit CI failure demonstration, a maintainer adds the
 `ci-failure-probe` label to the pull request. Label changes rerun the same
 workflow. Membership of that full label name, compared case-insensitively by
-GitHub, sets `COMPOSURE_CI_FAILURE_PROBE=1` and fails
-`TestCIFailureProbe` in the real Go suite. Verify that the required check fails
-and blocks merging, then remove the label and verify the restored passing run
-on the current candidate. Other events and unlabelled pull requests set the
-variable to `0`; no failing source revision is needed.
+GitHub, sets `COMPOSURE_BROWSER_FAILURE_PROBE=1` for the phase gate. The real
+Page journey then negates its initial visible empty-state assertion, causing a
+Playwright assertion failure after the Go suite passes. The Go probe variable
+remains `0`. Verify that the required check fails and blocks merging, then
+remove the label and verify the restored passing run on the current candidate.
+The same failure and restoration can be reproduced locally:
+
+```sh
+COMPOSURE_BROWSER_FAILURE_PROBE=1 COMPOSURE_CI_FAILURE_PROBE=0 bash scripts/test-phase1
+bash scripts/test-phase1
+```
+
+The first command is expected to exit nonzero at the real Playwright assertion;
+the second runs with both probe variables unset and must pass. For hosted
+evidence, retain the reviewed PR head and base SHAs, the workflow's synthetic
+merge checkout SHA, and both failed and restored passing run URLs. Keep logs
+showing the Playwright assertion failure and the passing build, vet, Go test,
+race, and browser steps. Other events and unlabelled pull requests set the
+browser probe to `0`.

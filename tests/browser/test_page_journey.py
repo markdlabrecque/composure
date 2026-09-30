@@ -130,7 +130,11 @@ class PageJourneyTests(BuiltAppTests):
                 page = context.new_page()
                 page.set_default_timeout(5000)
                 page.goto(site.url + "/admin/pages")
-                self.expect(page.get_by_text("No Pages yet.", exact=True)).to_be_visible()
+                empty_state = page.get_by_text("No Pages yet.", exact=True)
+                if os.environ.get("COMPOSURE_BROWSER_FAILURE_PROBE") == "1":
+                    self.expect(empty_state).not_to_be_visible()
+                else:
+                    self.expect(empty_state).to_be_visible()
                 self.keyboard_activate(page, page.get_by_role("link", name="New Page", exact=True))
                 self.assert_fields(page, "", "", "")
                 self.audit(page, width, "create")
