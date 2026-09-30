@@ -17,6 +17,18 @@ import (
 
 var ErrNotFound = errors.New("content not found")
 var ErrPathTaken = errors.New("path is already owned")
+var ErrStaleDraft = errors.New("draft revision is stale")
+var ErrPathChangeUnsupported = errors.New("published Page path changes are unsupported")
+
+type PathChangeUnsupportedError struct {
+	OwnedPath string
+}
+
+func (e *PathChangeUnsupportedError) Error() string {
+	return fmt.Sprintf("published Page path change is unsupported while %s is owned", e.OwnedPath)
+}
+
+func (e *PathChangeUnsupportedError) Unwrap() error { return ErrPathChangeUnsupported }
 
 const (
 	MaxTitleLength = 200
@@ -84,6 +96,7 @@ type Repository interface {
 	ListItems(context.Context, string) ([]ItemSummary, error)
 	GetItem(context.Context, string) (Item, error)
 	CreateItem(context.Context, ItemDraft, time.Time) (string, error)
+	SaveDraft(context.Context, string, int, ItemDraft, time.Time, string) (changed bool, err error)
 }
 
 var pagePath = regexp.MustCompile(`^/$|^(/[a-z0-9]+(-[a-z0-9]+)*){1,8}$`)

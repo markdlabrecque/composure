@@ -46,11 +46,11 @@ type conflictOwner struct {
 }
 
 type pageFormData struct {
-	Heading string
-	Fields  []formField
-	Values  map[string]string
-	Errors  []formProblem
-	Owner   *conflictOwner
+	Heading, Action, Revision, SubmitLabel string
+	Fields                                 []formField
+	Values                                 map[string]string
+	Errors                                 []formProblem
+	Owner                                  *conflictOwner
 }
 
 // ResolveLoopback validates every DNS result and returns an exact bind address.
@@ -148,7 +148,68 @@ func Handler(repository content.Repository, port string) http.Handler {
 			http.Error(w, "cannot load Page configuration", http.StatusInternalServerError)
 			return
 		}
-		writeTemplate(w, savedPageTemplate, savedPageData(item, definition))
+		writeTemplate(w, pageFormTemplate, editFormData(item, definition, nil, nil, strconv.Itoa(item.Revision)))
+	})
+	mux.HandleFunc("POST /admin/pages/{id}", func(w http.ResponseWriter, r *http.Request) {
+		if !parseAdminForm(w, r) {
+			return
+		}
+		id := r.PathValue("id")
+		item, err := repository.GetItem(r.Context(), id)
+		if errors.Is(err, content.ErrNotFound) {
+			http.NotFound(w, r)
+			return
+		}
+		if err != nil {
+			http.Error(w, "cannot load Page", http.StatusInternalServerError)
+			return
+		}
+		definition, err := activePageDefinition(r.Context(), repository)
+		if err != nil {
+			http.Error(w, "cannot load Page configuration", http.StatusInternalServerError)
+			return
+		}
+		values := submittedValues(r, definition)
+		revisionText := r.PostForm.Get("draft_revision")
+		revision, parseErr := strconv.Atoi(revisionText)
+		if parseErr != nil {
+			writeEditProblem(w, http.StatusConflict, item, definition, values, revisionText,
+				formProblem{Code: "stale_draft", Message: "This Page changed after the form was loaded. Review your values and reload before saving."}, nil)
+			return
+		}
+		draft, problems := content.PreparePageDraft(definition, values)
+		if len(problems) > 0 {
+			writeEditValidationForm(w, item, definition, values, revisionText, problems)
+			return
+		}
+		_, err = repository.SaveDraft(r.Context(), id, revision, draft, time.Now(), "local-prototype")
+		if err == nil {
+			http.Redirect(w, r, "/admin/pages/"+id+"/edit", http.StatusSeeOther)
+			return
+		}
+		var taken *content.PathTakenError
+		if errors.As(err, &taken) {
+			owner := &conflictOwner{ID: taken.OwnerID, Title: taken.OwnerTitle}
+			writeEditProblem(w, http.StatusConflict, item, definition, values, revisionText,
+				formProblem{Code: "path_taken", Message: "That path is already used by another Page."}, owner)
+			return
+		}
+		if errors.Is(err, content.ErrStaleDraft) {
+			writeEditProblem(w, http.StatusConflict, item, definition, values, revisionText,
+				formProblem{Code: "stale_draft", Message: "This Page changed after the form was loaded. Review your values and reload before saving."}, nil)
+			return
+		}
+		var pathChange *content.PathChangeUnsupportedError
+		if errors.As(err, &pathChange) {
+			writeEditProblem(w, http.StatusUnprocessableEntity, item, definition, values, revisionText,
+				formProblem{Field: "path", Code: "path_change_unsupported", Message: fmt.Sprintf("Changing a published Page's path needs redirects, which arrive in a later phase. Keep %s for now.", pathChange.OwnedPath)}, nil)
+			return
+		}
+		if errors.Is(err, content.ErrNotFound) {
+			http.NotFound(w, r)
+			return
+		}
+		http.Error(w, "cannot save Page", http.StatusInternalServerError)
 	})
 	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
 		snapshot, err := repository.PublishedByPath(r.Context(), r.URL.Path)
@@ -168,7 +229,15 @@ func Handler(repository content.Repository, port string) http.Handler {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		_, _ = w.Write(html)
 	})
-	protected := http.NewCrossOriginProtection().Handler(mux)
+	methodBoundary := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if isPageSavePath(r.URL.Path) && r.Method != http.MethodPost {
+			w.Header().Set("Allow", http.MethodPost)
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		mux.ServeHTTP(w, r)
+	})
+	protected := http.NewCrossOriginProtection().Handler(methodBoundary)
 	allowed := map[string]bool{net.JoinHostPort("127.0.0.1", port): true, net.JoinHostPort("localhost", port): true, net.JoinHostPort("::1", port): true}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(r.URL.Path, "/admin") {
@@ -185,6 +254,15 @@ func Handler(repository content.Repository, port string) http.Handler {
 		}
 		protected.ServeHTTP(w, r)
 	})
+}
+
+func isPageSavePath(path string) bool {
+	const prefix = "/admin/pages/"
+	if !strings.HasPrefix(path, prefix) {
+		return false
+	}
+	id := strings.TrimPrefix(path, prefix)
+	return id != "" && id != "new" && !strings.Contains(id, "/")
 }
 
 func parseAdminForm(w http.ResponseWriter, r *http.Request) bool {
@@ -242,7 +320,7 @@ func newFormData(definition content.PageDefinition, values map[string]string, pr
 	if values == nil {
 		values = map[string]string{}
 	}
-	data := pageFormData{Heading: "New Page", Values: values, Errors: problems, Owner: owner}
+	data := pageFormData{Heading: "New Page", Action: "/admin/pages", SubmitLabel: "Create Page", Values: values, Errors: problems, Owner: owner}
 	for _, field := range definition.Fields {
 		textareaValue := values[field.ID]
 		if field.Kind == "long_text" && (strings.HasPrefix(textareaValue, "\n") || strings.HasPrefix(textareaValue, "\r")) {
@@ -259,12 +337,42 @@ func newFormData(definition content.PageDefinition, values map[string]string, pr
 	return data
 }
 
+func editFormData(item content.Item, definition content.PageDefinition, values map[string]string, problems []formProblem, revision string) pageFormData {
+	if values == nil {
+		values = map[string]string{"title": item.Title, "path": item.Path}
+		for _, field := range definition.Fields {
+			values[field.ID] = item.Fields[field.ID]
+		}
+	}
+	data := newFormData(definition, values, problems, nil)
+	data.Heading = "Edit Page"
+	data.Action = "/admin/pages/" + item.ID
+	data.Revision = revision
+	data.SubmitLabel = "Save changes"
+	return data
+}
+
 func writeValidationForm(w http.ResponseWriter, definition content.PageDefinition, values map[string]string, problems []content.FieldError) {
 	data := make([]formProblem, 0, len(problems))
 	for _, problem := range problems {
 		data = append(data, formProblem{Field: problem.Field, Code: problem.Code, Message: validationMessage(problem, definition)})
 	}
 	writeTemplateStatus(w, http.StatusUnprocessableEntity, pageFormTemplate, newFormData(definition, values, data, nil))
+}
+
+func writeEditValidationForm(w http.ResponseWriter, item content.Item, definition content.PageDefinition, values map[string]string, revision string, problems []content.FieldError) {
+	data := make([]formProblem, 0, len(problems))
+	for _, problem := range problems {
+		data = append(data, formProblem{Field: problem.Field, Code: problem.Code, Message: validationMessage(problem, definition)})
+	}
+	writeTemplateStatus(w, http.StatusUnprocessableEntity, pageFormTemplate, editFormData(item, definition, values, data, revision))
+}
+
+func writeEditProblem(w http.ResponseWriter, status int, item content.Item, definition content.PageDefinition, values map[string]string, revision string, problem formProblem, owner *conflictOwner) {
+	data := editFormData(item, definition, values, nil, revision)
+	data.Errors = []formProblem{problem}
+	data.Owner = owner
+	writeTemplateStatus(w, status, pageFormTemplate, data)
 }
 
 func validationMessage(problem content.FieldError, definition content.PageDefinition) string {
@@ -295,22 +403,6 @@ func validationMessage(problem content.FieldError, definition content.PageDefini
 	default:
 		return "Check this value."
 	}
-}
-
-type savedPageDataValue struct {
-	Item   content.Item
-	Fields []formField
-}
-
-func savedPageData(item content.Item, definition content.PageDefinition) savedPageDataValue {
-	data := savedPageDataValue{Item: item}
-	for _, field := range definition.Fields {
-		data.Fields = append(data.Fields, formField{
-			ID: field.ID, Kind: field.Kind, Label: field.Label, HelpText: field.HelpText,
-			Required: field.Required, Value: item.Fields[field.ID],
-		})
-	}
-	return data
 }
 
 func writeTemplate(w http.ResponseWriter, page *template.Template, data any) {

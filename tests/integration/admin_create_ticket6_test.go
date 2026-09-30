@@ -285,15 +285,9 @@ func TestAdminCreateTicket6DraftPersistenceAndMetadata(t *testing.T) {
 	if !strings.Contains(saved, "&lt;script&gt;body&lt;/script&gt;") {
 		t.Error("saved route lacks escaped stored body")
 	}
-	for _, tag := range admin6TagRE.FindAllString(saved, -1) {
-		a := admin6Attrs(tag)
-		if strings.HasPrefix(strings.ToLower(tag), "<form") && strings.EqualFold(a["method"], "post") {
-			t.Error("read-only saved page has mutating form")
-		}
-		if (strings.HasPrefix(strings.ToLower(tag), "<button") && (a["type"] == "" || a["type"] == "submit")) || a["type"] == "submit" {
-			t.Error("read-only saved page has submit control")
-		}
-	}
+	// Ticket 7 replaces the intermediate read-only screen with the real edit form.
+	admin7Form(t, saved, id)
+	admin7Revision(t, saved, "1")
 	admin6HTTP(t, base, "GET", "/about-us", "", nil, 404)
 	stop()
 	base, _ = serve(t, site)
