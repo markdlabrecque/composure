@@ -15,12 +15,18 @@ Before creating a worktree:
 
 1. Confirm the issue is open, actionable, and its dependencies are complete.
 2. Assign the issue to the repository maintainer (`markdlabrecque`) when picking it up.
-3. Check its labels. Exactly one of `Luna` or `Sol` must be present to select the implementor. If neither or both are present, stop and ask Mark; do not infer or change the routing label yourself.
+3. Select the implementor model and reasoning effort using the rules below, and include both in the ticket handoff.
 4. Invoke `/create-worktree` for this ticket and work only in the resulting ticket-specific worktree. Do not put worktrees inside the main checkout. Preserve unrelated changes in any checkout.
 
 ## TDD and implementation
 
-Invoke `/subagent-tdd-pipeline` for the ticket. Follow its test-writer, implementor, reviewer, and reporter stages, gates, evidence, and escalation rules. The ticket's single routing label overrides **only the implementor selection**: use Luna for a `Luna` issue and Sol for a `Sol` issue. Use the pipeline skill's prescribed roles and model assignments for the other stages. Do not combine roles or bypass required review.
+Invoke `/subagent-tdd-pipeline` for the ticket. Follow its test-writer, implementor, reviewer, and reporter stages, gates, evidence, and escalation rules. Use the pipeline skill's prescribed roles and model assignments for the other stages. Do not combine roles or bypass required review.
+
+The dispatching orchestrator selects the implementor model and reasoning effort before sending out the ticket:
+
+- Check the issue's routing labels first. `Sol` selects `gpt-6.1-sol`; `Luna` selects `gpt-6-luna`. If neither label is present, choose between these models based on the ticket's difficulty, scope, and risk. If both are present, stop and ask Mark to resolve the conflict. Preserve the labels.
+- Choose a supported reasoning effort based on the ticket's difficulty: `low` for straightforward changes, `medium` for moderate work, and `high` or `xhigh` for complex logic, uncertain behavior, or substantial correctness risk.
+- Record the selected model, reasoning effort, and brief rationale in the ticket handoff. The receiving ticket orchestrator must pass those values explicitly when spawning the `implementor` with fresh context. These selections override the implementor profile's model and reasoning-effort defaults and the pipeline's model-family restriction for this project.
 
 Keep the ticket's scope bounded. Resolve unclear acceptance criteria, conflicting contracts, or product decisions with Mark before choosing a behavior. Run the required local gates in the worktree and get them passing on the candidate revision **before pushing the branch**. Do not push a failing or unreviewed candidate. Record the commands, results, and tested revision for the reporter.
 
