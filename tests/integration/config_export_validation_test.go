@@ -201,6 +201,8 @@ func TestConfig11SyntaxOffsets(t *testing.T) {
 		{"object_trailing_comma", []byte(`{"a":1,}`), 7},
 		{"array_trailing_comma", []byte(`[1,]`), 3},
 		{"invalid_unicode_hex", []byte(`{"a":"x\u12X4"}`), 11},
+		{"mixed_escape_first_error", []byte(`{"a":"\q","b":"\u12X4"}`), 7},
+		{"mixed_unicode_first_error", []byte(`{"a":"\u12X4","b":"\q"}`), 10},
 		{"utf8", []byte{'"', 0xff, '"'}, 1},
 		{"high", []byte(`{"label":"\uD800"}`), 10},
 		{"low", []byte(`{"label":"\uDC00"}`), 10},
