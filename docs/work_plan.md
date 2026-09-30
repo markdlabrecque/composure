@@ -63,7 +63,9 @@ Outcome: A local Go application persists and renders one example Page, proving t
 - Define the minimal Page configuration format. Design audit entries in phase 2, media indexes in phase 4, menu/Trash storage in phase 5 and the full recovery manifest in phase 6. Issue #3 covers Page configuration only; portable partial export/import is deferred beyond v1.
 - Add minimal agent conventions and actual test commands before application implementation. Re-estimate the revised must-have scope at phase exit, using the PRD's ordered cut candidates rather than the obsolete day table.
 
-### Progress as of 2026-09-30
+### Historical progress snapshot as of 2026-09-30
+
+This pre-publication snapshot is superseded for current Phase 1 status by the [acceptance report](phase1/acceptance.md) and [#33 completion summary](https://github.com/markdlabrecque/composure/issues/33#issuecomment-5920543501); it is retained as historical context, not a current tracker update.
 
 Closed prerequisites include #2, #3, #4, #5, #6, #11, #14, #19, #20, #23, #24, #25, #29 and #30, plus runner-verification children #35, #36, #37, #38, #39 and #40. Preserve their evidence and verify their delivered changes are present in `phase-1` during readiness checks. Do not redispatch completed work. #1 remains the phase tracker.
 
@@ -71,11 +73,11 @@ Closed prerequisites include #2, #3, #4, #5, #6, #11, #14, #19, #20, #23, #24, #
 - [#11](https://github.com/markdlabrecque/composure/issues/11) completed active configuration export and validation in [PR #50](https://github.com/markdlabrecque/composure/pull/50), merged into `develop` at `90743fac181f08fc9ba582188785e9dc22f93301`. Its [completion summary](https://github.com/markdlabrecque/composure/issues/11#issuecomment-5912577676) records acceptance, review and local/hosted gate evidence.
 - [#6](https://github.com/markdlabrecque/composure/issues/6) completed the generated create form, draft persistence, Pages list and read-only saved view in [PR #51](https://github.com/markdlabrecque/composure/pull/51), merged into `develop` at `e91ea04d4114cd3b1971fdae0fefc096f8a1bba0`. Its [completion summary](https://github.com/markdlabrecque/composure/issues/6#issuecomment-5913719350) records independent review, local and required hosted checks, real Chrome checks at desktop and narrow widths, and persistence after restart. The issue closed as completed on 2026-09-30. Draft creation leaves public routes and snapshots unchanged.
 
-[#7](https://github.com/markdlabrecque/composure/issues/7), draft editing, is the next dependency-ready ticket. Preview, publication, republishing, second-site initialization and the combined browser/phase gates remain open. Authentication and audit behavior remain later-phase work; the application is still a local prototype.
+At the time of this snapshot, [#7](https://github.com/markdlabrecque/composure/issues/7), draft editing, was the next dependency-ready ticket. Preview, publication, republishing, second-site initialization and the combined browser/phase gates remained open. Authentication and audit behavior remained later-phase work; the application was still a local prototype.
 
-### Remaining ticket waves
+### Historical ticket-wave snapshot
 
-The table lists open work as of 2026-09-30 and preserves the original wave numbers. Arrows mean sequential. Each ticket still waits for its own merged, summarized and closed prerequisites and the relevant accepted contracts.
+This pre-publication table records open work as it was understood on 2026-09-30 and preserves the original wave numbers; it is not an exhaustive or current status list. The linked Phase 1 evidence above supersedes its Phase 1 entries. Arrows mean sequential. Each ticket still waits for its own merged, summarized and closed prerequisites and the relevant accepted contracts.
 
 | Wave | Ticket | Outcome | Prerequisites / coordination |
 | --- | --- | --- | --- |
