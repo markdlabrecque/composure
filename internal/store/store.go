@@ -124,9 +124,15 @@ func Initialize(ctx context.Context, path, siteID string, at time.Time, example 
 
 // Open checks identity, integrity and supported versions without running DDL.
 func Open(ctx context.Context, path string) (*Store, error) {
+	store, _, err := open(ctx, path, true)
+	return store, err
+}
+
+func open(ctx context.Context, path string, validateDocument bool) (*Store, ActiveConfig, error) {
+	var active ActiveConfig
 	db, err := connect(path)
 	if err != nil {
-		return nil, &StateError{3, fmt.Sprintf("%s is not a Composure site database: %v", path, err)}
+		return nil, active, &StateError{3, fmt.Sprintf("%s is not a Composure site database: %v", path, err)}
 	}
 	ok := false
 	defer func() {
@@ -137,37 +143,40 @@ func Open(ctx context.Context, path string) (*Store, error) {
 	var id, version, format int
 	var integrity, journal, document string
 	if err = db.QueryRowContext(ctx, "PRAGMA application_id").Scan(&id); err != nil || id != ApplicationID {
-		return nil, &StateError{3, fmt.Sprintf("%s is not a Composure site database", path)}
+		return nil, active, &StateError{3, fmt.Sprintf("%s is not a Composure site database", path)}
 	}
 	if err = db.QueryRowContext(ctx, "PRAGMA quick_check").Scan(&integrity); err != nil {
-		return nil, &StateError{3, fmt.Sprintf("%s failed integrity check: %v", path, err)}
+		return nil, active, &StateError{3, fmt.Sprintf("%s failed integrity check: %v", path, err)}
 	}
 	if err = db.QueryRowContext(ctx, "PRAGMA journal_mode").Scan(&journal); err != nil || integrity != "ok" || journal != "wal" {
-		return nil, &StateError{3, fmt.Sprintf("%s failed integrity check: %s, journal mode %s", path, integrity, journal)}
+		return nil, active, &StateError{3, fmt.Sprintf("%s failed integrity check: %s, journal mode %s", path, integrity, journal)}
 	}
 	if err = db.QueryRowContext(ctx, "PRAGMA user_version").Scan(&version); err != nil {
-		return nil, err
+		return nil, active, err
 	}
 	if err = compatible("schema", version); err != nil {
-		return nil, err
+		return nil, active, err
 	}
 	if err = db.QueryRowContext(ctx, "SELECT config_format_version FROM site WHERE singleton=1").Scan(&format); err != nil {
-		return nil, &StateError{4, "active configuration is invalid: " + err.Error()}
+		return nil, active, &StateError{4, "active configuration is invalid: " + err.Error()}
 	}
 	if err = compatible("configuration format", format); err != nil {
-		return nil, err
+		return nil, active, err
 	}
-	if err = db.QueryRowContext(ctx, "SELECT document FROM active_config WHERE singleton=1").Scan(&document); err != nil {
-		return nil, &StateError{4, "active configuration is invalid: " + err.Error()}
+	if err = db.QueryRowContext(ctx, "SELECT revision,document FROM active_config WHERE singleton=1").Scan(&active.Revision, &document); err != nil {
+		return nil, active, &StateError{4, "active configuration is invalid: " + err.Error()}
 	}
-	if _, err = config.Decode([]byte(document)); err != nil {
-		return nil, &StateError{4, "active configuration is invalid: " + err.Error()}
+	active.Document = []byte(document)
+	if validateDocument {
+		if _, err = config.Decode(active.Document); err != nil {
+			return nil, active, &StateError{4, "active configuration is invalid: " + err.Error()}
+		}
 	}
 	if _, err = db.ExecContext(ctx, "PRAGMA query_only=ON"); err != nil {
-		return nil, err
+		return nil, active, err
 	}
 	ok = true
-	return &Store{db}, nil
+	return &Store{db}, active, nil
 }
 func compatible(kind string, version int) error {
 	if version == 1 {
