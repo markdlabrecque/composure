@@ -2,6 +2,7 @@
 
 from contextlib import contextmanager
 from pathlib import Path
+import os
 import selectors
 import shutil
 import subprocess
@@ -28,35 +29,51 @@ def managed_site(binary, startup_timeout=10):
             [str(binary), "serve", "--site", str(root), "--addr", "127.0.0.1:0"],
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
-            text=True,
         )
+        deadline = time.monotonic() + startup_timeout
         selector = selectors.DefaultSelector()
         try:
-            selector.register(process.stdout, selectors.EVENT_READ)
-            if not selector.select(startup_timeout):
-                raise RuntimeError(
-                    f"server did not print its ephemeral address within {startup_timeout}s"
-                )
-            line = process.stdout.readline().strip()
-            if not line.startswith("listening on "):
-                raise RuntimeError(f"server printed no usable address: {line!r}")
-            address = line.removeprefix("listening on ")
+            output_fd = process.stdout.fileno()
+            os.set_blocking(output_fd, False)
+            selector.register(output_fd, selectors.EVENT_READ)
+            address_line = bytearray()
+            while b"\n" not in address_line:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0 or not selector.select(remaining):
+                    raise RuntimeError(
+                        f"server did not print a complete ephemeral address within {startup_timeout}s"
+                    )
+                try:
+                    chunk = os.read(output_fd, 4096)
+                except BlockingIOError:
+                    continue
+                if not chunk:
+                    raise RuntimeError("server exited before printing its ephemeral address")
+                address_line.extend(chunk)
         finally:
             selector.close()
 
-        deadline = time.monotonic() + startup_timeout
+        line = bytes(address_line).split(b"\n", 1)[0].decode("utf-8", errors="replace").strip()
+        if not line.startswith("listening on "):
+            raise RuntimeError(f"server printed no usable address: {line!r}")
+        address = line.removeprefix("listening on ")
+
         while True:
             if process.poll() is not None:
                 raise RuntimeError(f"server exited before readiness with status {process.returncode}")
             try:
-                with urlopen(address + "/healthz", timeout=0.25) as response:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise RuntimeError(f"server health check did not pass within {startup_timeout}s")
+                with urlopen(address + "/healthz", timeout=min(0.25, remaining)) as response:
                     if response.status == 200 and response.read().strip() == b"ok":
                         break
             except (OSError, URLError):
                 pass
-            if time.monotonic() >= deadline:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
                 raise RuntimeError(f"server health check did not pass within {startup_timeout}s")
-            time.sleep(0.05)
+            time.sleep(min(0.05, remaining))
 
         yield SimpleNamespace(root=root, url=address, process=process)
     finally:

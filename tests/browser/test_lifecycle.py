@@ -3,10 +3,13 @@
 from pathlib import Path
 import os
 import shutil
+import signal
 import sqlite3
 import subprocess
+import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 from urllib.request import urlopen
 
 from support import managed_site
@@ -43,6 +46,58 @@ class BuiltAppTests(unittest.TestCase):
 
 
 class SiteLifetimeTests(BuiltAppTests):
+    def test_partial_address_times_out_and_cleans_up(self):
+        original_popen = subprocess.Popen
+        children = []
+        roots = []
+
+        def fault_popen(args, **kwargs):
+            if len(args) > 1 and args[1] == "serve":
+                roots.append(Path(args[args.index("--site") + 1]))
+                child = original_popen([
+                    sys.executable, "-c",
+                    "import sys, time; sys.stdout.write('listening on '); "
+                    "sys.stdout.flush(); time.sleep(30)",
+                ], **kwargs)
+                children.append(child)
+                return child
+            return original_popen(args, **kwargs)
+
+        def watchdog(signum, frame):
+            raise TimeoutError("outer watchdog: incomplete address escaped startup timeout")
+
+        previous_handler = signal.signal(signal.SIGALRM, watchdog)
+        previous_timer = signal.setitimer(signal.ITIMER_REAL, 3)
+        failure = None
+        try:
+            with patch("support.subprocess.Popen", side_effect=fault_popen):
+                try:
+                    with managed_site(self.binary, startup_timeout=0.2):
+                        self.fail("a partial address cannot produce a ready site")
+                except (RuntimeError, TimeoutError) as error:
+                    failure = error
+        finally:
+            signal.setitimer(signal.ITIMER_REAL, 0)
+            signal.signal(signal.SIGALRM, previous_handler)
+            signal.setitimer(signal.ITIMER_REAL, *previous_timer)
+            reaped_by_helper = [child.poll() is not None for child in children]
+            removed_by_helper = [not root.exists() for root in roots]
+            # Keep a broken helper from leaving the fault child/site behind.
+            for child in children:
+                if child.poll() is None:
+                    child.kill()
+                    child.wait(timeout=5)
+            for root in roots:
+                self.addCleanup(shutil.rmtree, root, True)
+
+        self.assertEqual(len(children), 1, "fault must reach a real server child")
+        self.assertNotIsInstance(failure, TimeoutError,
+                                 "partial address escaped the configured startup timeout until the outer watchdog")
+        self.assertIsInstance(failure, RuntimeError, "incomplete address must fail startup explicitly")
+        self.assertRegex(str(failure), r"address|readiness|timed out|timeout")
+        self.assertTrue(reaped_by_helper[0], "startup failure must reap the server")
+        self.assertTrue(removed_by_helper[0], "startup failure must remove its initialized SQLite site")
+
     def assert_fresh(self, site):
         self.assertRegex(site.url, r"^http://127\.0\.0\.1:[1-9][0-9]*$")
         self.assertIsNone(site.process.poll())
