@@ -1,4 +1,6 @@
 __pycache__/
+.venv-browser/
+tests/browser/vendor/axe.min.js
 .env
 *.py[cod]
 

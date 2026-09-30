@@ -30,6 +30,21 @@ repository from its own location and requires Python 3. While the repository
 contains only planning material, it checks the required documents and parses
 any JSON examples under `docs/phase1/examples/`.
 
+The real Chromium Page journey is a separate focused check. Run
+`scripts/install-browser-tests` once to create `.venv-browser`, install the
+exact Python dependency pins, download their compatible Chromium build, and
+fetch the checksum-verified axe-core asset. This requires Python 3.9 or newer
+(Playwright 1.58.0 declares `Requires-Python: >=3.9`), `venv`, pip, and `curl`;
+Playwright may also need the host libraries listed in its browser
+installation documentation. Then run `scripts/test-browser`. The journey uses
+Playwright 1.58.0, which pins Chromium/headless-shell revision 1208
+(Chromium 145.0.7632.6); Python dependencies are pinned in
+`tests/browser/requirements.txt`. Before the tests run, the focused command
+checks Playwright, the launched Chromium, and axe-core 4.11.0 (SHA-256
+`e9e5863c33a874f09bc01acd9234b7e3c871479f5eef8802fa582544465e6d01`) against
+those pins. It builds the real CLI and starts a fresh SQLite site for each
+width. Passing axe checks do not establish WCAG conformance.
+
 When a root `go.mod` is added, the runner switches to application checks. It
 first asks the selected Go toolchain for `go list -json ./...` metadata and
 requires at least one package with an active internal or external test file.

@@ -482,9 +482,7 @@ func editFormData(item content.Item, definition content.PageDefinition, values m
 	data.Heading = "Edit Page"
 	data.Action = "/admin/pages/" + item.ID
 	data.PreviewURL = data.Action + "/preview"
-	if !item.Published {
-		data.PublishURL = "/admin/pages/" + item.ID + "/publish"
-	}
+	data.PublishURL = "/admin/pages/" + item.ID + "/publish"
 	data.Revision = revision
 	data.SubmitLabel = "Save changes"
 	return data
