@@ -181,8 +181,13 @@ func wholeDocumentSyntaxFailure(data []byte, err error) *ValidationError {
 	var syntax *json.SyntaxError
 	if errors.As(err, &syntax) {
 		offset := int(syntax.Offset) - 1
-		if strings.Contains(strings.ToLower(syntax.Error()), "invalid escape sequence") {
-			if invalidHex := invalidUnicodeHexOffset(data); invalidHex >= 0 {
+		diagnostic := strings.ToLower(syntax.Error())
+		if strings.Contains(diagnostic, "invalid escape sequence") && strings.Contains(diagnostic, `\u`) {
+			end := int(syntax.Offset)
+			if end > len(data) {
+				end = len(data)
+			}
+			if invalidHex := invalidUnicodeHexOffset(data[:end]); invalidHex >= 0 {
 				offset = invalidHex
 			}
 		}
