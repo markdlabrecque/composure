@@ -137,6 +137,8 @@ Dependencies: Phase 1. Covers FR-01, FR-02, FR-09 and the foundation of FR-07, F
 
 Outcome: An administrator defines content in the interface, and an editor creates, finds, previews and publishes it without code changes.
 
+Tickets: drafted as P3-01 to P3-70 in [phase3/tickets.md](phase3/tickets.md), with lanes and waves in [phase3/work_plan.md](phase3/work_plan.md). Issues are opened after Phase 2 closes.
+
 - Build the content type and field builder, including labels, groups, ordering, help text, required state, validation, and supported single or multiple values.
 - Add the non-file launch fields: short, long and rich text; email; links; relationships; timezone-aware date and time; integer and decimal numbers; yes or no; single and multiple choice; phone; structured address and optional coordinates.
 - Generate usable list, edit and preview screens. Include title search and combined content-type and publication-status filters across types. Preserve entered work when validation fails.
