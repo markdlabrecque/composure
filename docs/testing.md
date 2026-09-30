@@ -22,6 +22,8 @@ For publication regressions, run
 `go test ./tests/integration -run 'TestPhase1PublishPage|TestPublishTicket9' -count=1`.
 This exercises the real admin/public handlers and SQLite publication
 transaction, including rollback after a test-only SQLite trigger failure.
+For configuration-driven initialization and generated rendering, run
+`go test ./tests/integration ./internal/site -run 'TestPhase1ConfigRoundTrip|TestConfigInitTicket12' -count=1`.
 
 Run `bash scripts/test` from any working directory. The runner finds the
 repository from its own location and requires Python 3. While the repository

@@ -167,7 +167,12 @@ func Handler(repository content.Repository, port string) http.Handler {
 			http.Error(w, "cannot load Page", http.StatusInternalServerError)
 			return
 		}
-		html, err := render.Preview(content.Snapshot{ItemID: item.ID, Title: item.Title, Path: item.Path, Fields: item.Fields})
+		definition, err := activePageDefinition(r.Context(), repository)
+		if err != nil {
+			http.Error(w, "cannot load Page configuration", http.StatusInternalServerError)
+			return
+		}
+		html, err := render.PreviewWithDefinition(content.Snapshot{ItemID: item.ID, Title: item.Title, Path: item.Path, Fields: item.Fields}, definition)
 		if err != nil {
 			http.Error(w, "cannot render Page", http.StatusInternalServerError)
 			return
@@ -316,7 +321,12 @@ func Handler(repository content.Repository, port string) http.Handler {
 			http.Error(w, "cannot load page", 500)
 			return
 		}
-		html, err := render.Page(snapshot)
+		definition, err := activePageDefinition(r.Context(), repository)
+		if err != nil {
+			http.Error(w, "cannot load Page configuration", http.StatusInternalServerError)
+			return
+		}
+		html, err := render.PageWithDefinition(snapshot, definition)
 		if err != nil {
 			http.Error(w, "cannot render page", 500)
 			return

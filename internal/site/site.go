@@ -10,8 +10,10 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
+	"github.com/markdlabrecque/composure/internal/config"
 	"github.com/markdlabrecque/composure/internal/content"
 	"github.com/markdlabrecque/composure/internal/store"
 )
@@ -34,6 +36,36 @@ func state(code int, format string, args ...any) error {
 
 // Init prints the plan before mutation. now supplies one timestamp for all rows.
 func Init(ctx context.Context, dir string, example, apply bool, out io.Writer, now func() time.Time) (err error) {
+	return initWithConfig(ctx, dir, config.Default, false, example, apply, out, now)
+}
+
+// InitWithConfig validates the selected document and optional fixed example
+// before inspecting, printing, or mutating the destination.
+func InitWithConfig(ctx context.Context, dir string, rawConfig []byte, example, apply bool, out io.Writer, now func() time.Time) (err error) {
+	return initWithConfig(ctx, dir, rawConfig, true, example, apply, out, now)
+}
+
+func initWithConfig(ctx context.Context, dir string, rawConfig []byte, explicitConfig, example, apply bool, out io.Writer, now func() time.Time) (err error) {
+	document, err := config.Validate(rawConfig)
+	if err != nil {
+		var validation *config.ValidationError
+		if errors.As(err, &validation) {
+			return &Error{Code: validation.ExitCode, Err: validation}
+		}
+		return &Error{Code: 3, Err: err}
+	}
+	canonical, err := config.Canonical(document)
+	if err != nil {
+		return err
+	}
+	definition := pageDefinition(document)
+	var seedPage *content.Snapshot
+	if example {
+		seedPage, err = validateSeed(seed, definition)
+		if err != nil {
+			return &Error{Code: 3, Err: err}
+		}
+	}
 	existing, err := empty(dir, "")
 	if err != nil {
 		return err
@@ -42,7 +74,21 @@ func Init(ctx context.Context, dir string, example, apply bool, out io.Writer, n
 	if existing {
 		suffix = " (existing empty directory)"
 	}
-	if _, err = fmt.Fprintf(out, "Plan: initialize a Composure site\n  site directory:  %s%s\n  database:        %s (schema v1, config format v1)\n  configuration:   built-in default, revision 1\n  content types:   page \"Page\" (fields: body)\n", dir, suffix, filepath.Join(dir, "composure.db")); err != nil {
+	fieldSummaries := make([]string, 0, len(definition.Fields))
+	for _, field := range definition.Fields {
+		required := "optional"
+		if field.Required {
+			required = "required"
+		}
+		fieldSummaries = append(fieldSummaries, fmt.Sprintf("%s (%s, %q, %s, order %s, help %q)", field.ID, field.Kind, field.Label, required, field.Order, field.HelpText))
+	}
+	configuration := "built-in default"
+	contentTypes := fmt.Sprintf("page %q (fields: body)", document.ContentTypes[0].Label)
+	if explicitConfig {
+		configuration = "selected definition"
+		contentTypes = fmt.Sprintf("page %q (fields: %s)", document.ContentTypes[0].Label, strings.Join(fieldSummaries, ", "))
+	}
+	if _, err = fmt.Fprintf(out, "Plan: initialize a Composure site\n  site directory:  %s%s\n  database:        %s (schema v1, config format v1)\n  configuration:   %s, revision 1\n  content types:   %s\n", dir, suffix, filepath.Join(dir, "composure.db"), configuration, contentTypes); err != nil {
 		return err
 	}
 	if example {
@@ -105,20 +151,17 @@ func Init(ctx context.Context, dir string, example, apply bool, out io.Writer, n
 	if err != nil {
 		return err
 	}
-	var page *content.Snapshot
-	if example {
-		page = &content.Snapshot{}
-		if err = json.Unmarshal(seed, page); err != nil {
+	if seedPage != nil {
+		seedPage.ItemID, err = content.NewID(at)
+		if err != nil {
 			return err
 		}
-		if page.ItemID, err = content.NewID(at); err != nil {
-			return err
-		}
-		if page.ID, err = content.NewID(at); err != nil {
+		seedPage.ID, err = content.NewID(at)
+		if err != nil {
 			return err
 		}
 	}
-	if err = store.Initialize(ctx, tempPath, siteID, at, page); err != nil {
+	if err = store.InitializeWithConfig(ctx, tempPath, siteID, at, canonical, seedPage); err != nil {
 		return err
 	}
 	// Store closed all connections and checkpointed WAL before publication.
@@ -173,6 +216,53 @@ func Init(ctx context.Context, dir string, example, apply bool, out io.Writer, n
 	}
 	_, err = fmt.Fprintf(out, "Initialized site %s at %s.\n", siteID, dir)
 	return err
+}
+
+func pageDefinition(document config.Document) content.PageDefinition {
+	definition := content.PageDefinition{}
+	for _, field := range document.ContentTypes[0].Fields {
+		definition.Fields = append(definition.Fields, content.FieldDefinition{
+			ID: field.ID, Kind: field.Kind, Label: field.Label, HelpText: field.HelpText,
+			Required: field.Required, Order: field.Order.String(),
+		})
+	}
+	content.SortPageFields(definition.Fields)
+	return definition
+}
+
+func validateSeed(data []byte, definition content.PageDefinition) (*content.Snapshot, error) {
+	var page content.Snapshot
+	if err := json.Unmarshal(data, &page); err != nil {
+		return nil, fmt.Errorf("field_value_invalid at $.fields: invalid fixed example seed")
+	}
+	allowed := make(map[string]bool, len(definition.Fields))
+	for _, field := range definition.Fields {
+		allowed[field.ID] = true
+	}
+	for id := range page.Fields {
+		if !allowed[id] {
+			return nil, fmt.Errorf("field_value_invalid at $.fields.%s: seed field is not configured", id)
+		}
+	}
+	values := map[string]string{"title": page.Title, "path": page.Path}
+	for id, value := range page.Fields {
+		values[id] = value
+	}
+	draft, problems := content.PreparePageDraft(definition, values)
+	if len(problems) > 0 {
+		problem := problems[0]
+		class := "field_value_invalid"
+		if problem.Code == "required" {
+			class = "required_value_missing"
+		}
+		return nil, fmt.Errorf("%s at $.fields.%s: fixed example seed failed %s validation", class, problem.Field, problem.Code)
+	}
+	seedFields := make(map[string]string, len(page.Fields))
+	for id := range page.Fields {
+		seedFields[id] = draft.Fields[id]
+	}
+	page.Title, page.Path, page.Fields = draft.Title, draft.Path, seedFields
+	return &page, nil
 }
 
 func empty(dir, owned string) (bool, error) {

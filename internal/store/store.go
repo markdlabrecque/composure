@@ -55,6 +55,12 @@ func connect(path string) (*sql.DB, error) {
 
 // Initialize writes only the already-reserved temporary database.
 func Initialize(ctx context.Context, path, siteID string, at time.Time, example *content.Snapshot) (err error) {
+	return InitializeWithConfig(ctx, path, siteID, at, config.Default, example)
+}
+
+// InitializeWithConfig creates a site with the validated configuration chosen
+// by init. The document becomes the site's active revision 1.
+func InitializeWithConfig(ctx context.Context, path, siteID string, at time.Time, document []byte, example *content.Snapshot) (err error) {
 	db, err := connect(path)
 	if err != nil {
 		return err
@@ -81,7 +87,7 @@ func Initialize(ctx context.Context, path, siteID string, at time.Time, example 
 		{"PRAGMA application_id=1129140307", nil},
 		{"PRAGMA user_version=1", nil},
 		{`INSERT INTO site VALUES(1,?,?,1)`, []any{siteID, timestamp}},
-		{`INSERT INTO active_config VALUES(1,1,?,?,?)`, []any{string(config.Default), timestamp, "local-prototype"}},
+		{`INSERT INTO active_config VALUES(1,1,?,?,?)`, []any{string(document), timestamp, "local-prototype"}},
 	}
 	for _, s := range statements {
 		if _, err = tx.ExecContext(ctx, s.query, s.args...); err != nil {
