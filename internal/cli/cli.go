@@ -66,20 +66,28 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	}
 	ctx := context.Background()
 	if command == "init" {
-		selected := config.Default
-		if *configFile != "" {
-			var err error
-			selected, err = os.ReadFile(*configFile)
-			if err != nil {
-				return fail(1, fmt.Errorf("io_error: cannot read configuration file: %v", err))
+		configSupplied := false
+		flags.Visit(func(parsed *flag.Flag) {
+			if parsed.Name == "config" {
+				configSupplied = true
 			}
-			if _, err = config.Validate(selected); err != nil {
-				var validation *config.ValidationError
-				if errors.As(err, &validation) {
-					return fail(validation.ExitCode, validation)
-				}
-				return fail(3, err)
+		})
+		if !configSupplied {
+			if err := site.Init(ctx, *dir, *example, *apply, stdout, time.Now); err != nil {
+				return fail(exitCode(err), err)
 			}
+			return 0
+		}
+		selected, err := os.ReadFile(*configFile)
+		if err != nil {
+			return fail(1, fmt.Errorf("io_error: cannot read configuration file: %v", err))
+		}
+		if _, err = config.Validate(selected); err != nil {
+			var validation *config.ValidationError
+			if errors.As(err, &validation) {
+				return fail(validation.ExitCode, validation)
+			}
+			return fail(3, err)
 		}
 		if err := site.InitWithConfig(ctx, *dir, selected, *example, *apply, stdout, time.Now); err != nil {
 			return fail(exitCode(err), err)
