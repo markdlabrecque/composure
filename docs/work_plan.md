@@ -1,6 +1,6 @@
 # Composure phased work plan
 
-Status: Active delivery plan. Phase 1 is in progress; completion requires reviewed ticket evidence.
+Status: Active delivery plan, updated 2026-09-30. Phase 1 has completed draft creation/listing and active configuration export/validation. Draft editing is next; phase completion still requires the publishing journey and reviewed exit evidence.
 
 Scope authority: [PRD](prd.md). Technical starting point: [Architecture plan](architecture_plan.md). The PRD takes precedence. This plan expands its delivery sequence into demonstrable milestones; it does not change v1 scope.
 
@@ -63,26 +63,26 @@ Outcome: A local Go application persists and renders one example Page, proving t
 - Define the minimal Page configuration format. Design audit entries in phase 2, media indexes in phase 4, menu/Trash storage in phase 5 and the full recovery manifest in phase 6. Issue #3 covers Page configuration only; portable partial export/import is deferred beyond v1.
 - Add minimal agent conventions and actual test commands before application implementation. Re-estimate the revised must-have scope at phase exit, using the PRD's ordered cut candidates rather than the obsolete day table.
 
-### Ticket waves
+### Progress as of 2026-09-30
 
-The table gives the earliest valid start for each remaining ticket, not a barrier that makes unrelated tickets wait. `∥` means parallel; arrows mean sequential. Each ticket still waits for its own merged, summarized and closed prerequisites and the relevant accepted contracts.
+Closed prerequisites include #2, #3, #4, #5, #6, #11, #14, #19, #20, #23, #24, #25, #29 and #30, plus runner-verification children #35, #36, #37, #38, #39 and #40. Preserve their evidence and verify their delivered changes are present in `develop` during readiness checks. Do not redispatch completed work. #1 remains the phase tracker.
 
-Completed prerequisites are #2, #19 and #29, including #29's runner-verification children #35/#36, #35's children #37/#38, and #38's children #39/#40. Preserve their evidence; do not redispatch them. Verify their delivered changes are present in `develop` during readiness checks. #1 is the phase tracker, not an implementation ticket.
+- The Page storage/runtime and configuration contracts, bootstrap CI and required merge checks are complete. The application initializes and serves a stored Page and rejects incompatible site versions without changing data.
+- [#11](https://github.com/markdlabrecque/composure/issues/11) completed active configuration export and validation in [PR #50](https://github.com/markdlabrecque/composure/pull/50), merged into `develop` at `90743fac181f08fc9ba582188785e9dc22f93301`. Its [completion summary](https://github.com/markdlabrecque/composure/issues/11#issuecomment-5912577676) records acceptance, review and local/hosted gate evidence.
+- [#6](https://github.com/markdlabrecque/composure/issues/6) completed the generated create form, draft persistence, Pages list and read-only saved view in [PR #51](https://github.com/markdlabrecque/composure/pull/51), merged into `develop` at `e91ea04d4114cd3b1971fdae0fefc096f8a1bba0`. Its [completion summary](https://github.com/markdlabrecque/composure/issues/6#issuecomment-5913719350) records independent review, local and required hosted checks, real Chrome checks at desktop and narrow widths, and persistence after restart. The issue closed as completed on 2026-09-30. Draft creation leaves public routes and snapshots unchanged.
+
+[#7](https://github.com/markdlabrecque/composure/issues/7), draft editing, is the next dependency-ready ticket. Preview, publication, republishing, second-site initialization and the combined browser/phase gates remain open. Authentication and audit behavior remain later-phase work; the application is still a local prototype.
+
+### Remaining ticket waves
+
+The table lists open work as of 2026-09-30 and preserves the original wave numbers. Arrows mean sequential. Each ticket still waits for its own merged, summarized and closed prerequisites and the relevant accepted contracts.
 
 | Wave | Ticket | Outcome | Prerequisites / coordination |
 | --- | --- | --- | --- |
-| 0a | #30 | Verify workflow contract and matching hosted bootstrap CI | #29; owns workflow/hosted evidence, not repository settings. |
-| 0b | #24 | Reconcile runner and workflow evidence; close parent | #29 and #30; parent assessment only after both children complete. |
-| 0c | #25 | Verify required merge checks and historical bootstrap evidence | #24; enforce the current gate on `develop`, retain #15's actual historical target and identify any original review/auto-merge evidence gap. |
-| 0d | #14 | Close CI prerequisite | #24 and #25; unresolved historical acceptance needs Mark's explicit decision, not a substituted claim. |
-| 1 | #20 ∥ #4 | Document configuration validation/export; initialize and serve a stored Page | Both wait for #14. #20 needs #19; #4 needs #2 and #19. #20 owns validation documentation/fixtures; #4 owns the application tracer and minimal agent guidance. |
-| 2 | #23 ∥ #5 | Review combined configuration contract; reject incompatible site versions | #23 needs #19/#20. #5 needs #4. Contract edits remain separate from application/version checks. |
-| 2 completion | #3 | Close Page configuration parent | #19/#20/#23 and parent acceptance evidence. #4 does not wait for all of #3. |
-| 3 | #6 ∥ #11 | Create/list Page drafts; export and validate active configuration | #6 needs #5. #11 needs #5/#20 and the relevant accepted contract review. Agree ownership of shared CLI/configuration files before launch. |
-| 4 | #7 | Edit an existing draft without history | #6; #11 may continue independently. |
-| 5 | #8 | Preview a saved draft with the public renderer | #7; #11 may continue independently. |
-| 6 | #9 | Publish an atomic immutable snapshot | #8; #11 may continue independently. |
-| 7 | #10 | Keep revised drafts private and preserve republish history | #9; #11 may continue independently. |
+| 4 | #7 | Edit an existing draft without history | #6 is complete; ready for pickup after normal dispatch checks. |
+| 5 | #8 | Preview a saved draft with the public renderer | #7. |
+| 6 | #9 | Publish an atomic immutable snapshot | #8. |
+| 7 | #10 | Keep revised drafts private and preserve republish history | #9. |
 | 8 | #12 | Initialize a second site from exported configuration and publish through its generated form | #10/#11; join the publishing and configuration lanes. |
 | 9 | #26 | Exercise the real Page journey in Chrome, including narrow viewport and accessibility checks | #10/#12 and their accepted contracts; owns browser journey and pinned setup. |
 | 10 | #31 | Add the fail-closed local phase gate | #26/#14 and retained #4/#5/#11/#12 suites; invoke the shared runner once, then the browser journey. |
