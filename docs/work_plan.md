@@ -1,6 +1,6 @@
 # Composure phased work plan
 
-Status: Proposed delivery plan. CI and phase 1 contract work are underway; phase completion requires ticket evidence.
+Status: Active delivery plan. Phase 1 is in progress; completion requires reviewed ticket evidence.
 
 Scope authority: [PRD](prd.md). Technical starting point: [Architecture plan](architecture_plan.md). The PRD takes precedence. This plan expands its delivery sequence into demonstrable milestones; it does not change v1 scope.
 
@@ -27,20 +27,30 @@ The bullets below are delivery boundaries, not a complete task backlog. Split an
 
 ## Merge and ticket completion
 
-The orchestrator owns this sequence for every work ticket, including documentation and CI tickets. A reviewer or reporter may prepare evidence, but the orchestrator posts the final summary and closes the issue.
+Use `develop` for ticket worktree bases, rebases, PR targets and completion checks. The main checkout's `.env` must set `BASE_BRANCH=develop`. Required merge checks and auto-merge enforcement apply to `develop`. Historical PRs merged into `main` remain historical evidence; verify their changes are present in `develop` before using them as prerequisites. Promoting `develop` to `main` is a separate release action and does not block ticket closure. This policy replaces older `main` targets and serial-queue wording in ticket descriptions and the phase tracker.
 
-Work tickets may run in parallel when their dependencies are complete and their file ownership and contracts do not conflict. Do not start a dependent ticket until its prerequisites have merged, received completion summaries, and closed. The Phase 1 dependency sequence begins with #14, then follows the blocking edges recorded on the tickets; it is not a global serial queue. Keep a durable checkpoint for each active ticket, including its stage, worktree, revision and next action.
+Independent tickets may run in parallel when their prerequisites are complete and their file ownership and contracts do not conflict. Start each ticket in its own numbered worktree and separate Orca Codex session. Use the `subagent-tdd-pipeline` stages and model profiles; exactly one `Luna` or `Sol` label selects the implementor. Documentation and verification-only work use the skill's applicable validation and independent-review route.
 
-1. Confirm dependencies are merged. Dispatch a Luna test writer, a separate Luna implementor and a stronger independent reviewer as prescribed by the ticket. Documentation-only tickets use their specified author/reviewer validation route.
-2. Open a PR that references the issue with `Refs #<number>`. Keep the issue open through implementation and review. Avoid closing keywords and automatic closing links so GitHub cannot close the issue before the summary is posted.
-3. Resolve review findings and obtain stronger-agent approval of the candidate diff and tests. The orchestrator then enables PR auto-merge. Required CI checks must pass for the current candidate against the current base before GitHub merges it. New code or base changes invalidate stale approval/evidence and return through review and the applicable checks. Do not bypass failing or missing required checks.
-4. The orchestrator follows the PR through CI and auto-merge. A green run or an enabled auto-merge flag is not proof of a merge. Confirm GitHub reports the PR as merged into `main`, and record its merge commit plus the CI-tested revision. If multiple PRs are needed for the ticket, wait for all required work to merge.
-5. After the merge is confirmed, the orchestrator posts a completion summary as a comment on the original issue. Include what changed, acceptance-criteria coverage, local test commands/results, CI run links and tested revision, stronger-review outcome, merged PR link and merge commit, and any remaining limitations or separately tracked follow-ups. Unfinished acceptance criteria keep the ticket open.
-6. Verify the summary comment exists, then close the issue as completed and update its checkbox in the phase tracker. If posting the comment fails, leave the issue open and retry. When resuming interrupted work, check for an existing summary for the merge commit to avoid duplicate comments. Only then mark the ticket finished and dispatch work that depends on it.
+### Dispatch and recovery
 
-The phase tracker closes only after all its work tickets have completed this sequence and the phase acceptance evidence is recorded. The orchestrator posts a phase summary before closing the tracker too.
+1. Check the issue, dependencies, routing label, assignment, checkout and base before creating a worktree. Resolve scope or policy conflicts before launch.
+2. Dispatch actionable leaf tickets first. Assess a parent after its children complete; a parent assessment does not need an idle agent session while a child is unfinished.
+3. One coordinator owns each ticket's dispatch and recovery. After setup succeeds, verify the exact workspace, path, agent identity and readiness before sending the task.
+4. Record the accepted send receipt, `turn_started` and the first task action before reporting the ticket started. Input acceptance alone is not proof of progress. Surface failed delivery and pending questions promptly.
+5. Recover in the existing worktree. Inspect the current terminal before retrying; use the durable request receipt to avoid duplicate input. Replace an agent only after confirming the previous process exited. Keep a checkpoint for each active ticket with its stage, worktree, agent handle, revision, evidence and next action.
 
-CI setup comes first. [Issue #14](https://github.com/markdlabrecque/composure/issues/14) establishes the workflow, required status check and repository auto-merge setting before other phase 1 PRs merge. It starts with real checks for the documents and runner that exist; [issue #4](https://github.com/markdlabrecque/composure/issues/4) activates the Go build/test checks when the application is introduced, and [issue #13](https://github.com/markdlabrecque/composure/issues/13) adds the browser gate. The bootstrap CI PR must itself pass its required checks and use auto-merge. Missing application or browser tests must never be reported as passing tests.
+### Completion
+
+The ticket session owns review, checks, the verified completion summary, issue closure and cleanup. A reporter may carry out these actions under that session's coordination.
+
+1. Confirm prerequisites are merged into or already present in `develop`, summarized and closed. Verification-only prerequisites require accepted evidence and closure, not a duplicate PR.
+2. For changes, obtain independent reviewer approval and pass all required local gates on the candidate before pushing. Open a PR targeting `develop`, titled `#<number>: <title>`, with `Refs #<number>` and no automatic closing keywords.
+3. Enable auto-merge only after approval and confirmation that the required CI check is configured. Require passing CI for the current candidate against the current `develop` base. New candidate or base changes require applicable gates and review again. Never bypass a failed or missing check.
+4. Confirm GitHub reports the PR merged into `develop`; record the merge commit and CI-tested revision. For verification-only work, retain the inspected revision, commands, results, existing merge/CI evidence and independent review. Do not invent retrospective review or auto-merge evidence. Unresolved acceptance criteria keep the ticket open.
+5. Post the completion summary on the issue with acceptance coverage, local/CI results, tested revision, review outcome, merged PR/commit where applicable, and limitations or follow-ups. Verify it exists before closing the issue and updating the tracker. Reuse existing summaries for the same result.
+6. Invoke `retire-worktree` after closure. Dependent tickets may start only after prerequisite completion. Close parent issues after all required children and parent criteria have evidence; close the phase tracker after its verified phase summary.
+
+Bootstrap CI comes first. Issue #14 establishes the shared runner, stable `Composure checks` status and CI-gated auto-merge on `develop`. Issue #4 activates real Go checks; issue #13 adds the browser gate to the same workflow. Local and CI commands stay aligned. Missing application or browser tests must never be reported as passing tests.
 
 ## Phase 1. Prove the foundation and publishing model
 
@@ -50,8 +60,41 @@ Outcome: A local Go application persists and renders one example Page, proving t
 - Fix the Page IDs, JSON draft/snapshot storage, configuration versions and URL ownership, plus the [deployment and retention boundaries](adr/0001-runtime-content-and-deployment.md). Later features may migrate the schema; do not build menu, Trash or reference indexes in phase 1.
 - Sketch the shared admin layout and the create, edit, preview, and publish journey. Choose the small amount of browser enhancement needed for responsive forms within the Go architecture.
 - Prove one local example Page can be saved, previewed, and published. This is an internal prototype until phase 2 supplies access controls.
-- Define the minimal Page configuration format. Design audit entries in phase 2, media indexes in phase 4, menu/Trash storage in phase 5 and the full recovery manifest in phase 6. Issue #3's future-format work must be narrowed before dispatch; portable partial export/import contracts are no longer v1 work.
+- Define the minimal Page configuration format. Design audit entries in phase 2, media indexes in phase 4, menu/Trash storage in phase 5 and the full recovery manifest in phase 6. Issue #3 covers Page configuration only; portable partial export/import is deferred beyond v1.
 - Add minimal agent conventions and actual test commands before application implementation. Re-estimate the revised must-have scope at phase exit, using the PRD's ordered cut candidates rather than the obsolete day table.
+
+### Ticket waves
+
+The table gives the earliest valid start for each remaining ticket, not a barrier that makes unrelated tickets wait. `∥` means parallel; arrows mean sequential. Each ticket still waits for its own merged, summarized and closed prerequisites and the relevant accepted contracts.
+
+Completed prerequisites are #2, #19 and #29, including #29's runner-verification children #35/#36, #35's children #37/#38, and #38's children #39/#40. Preserve their evidence; do not redispatch them. Verify their delivered changes are present in `develop` during readiness checks. #1 is the phase tracker, not an implementation ticket.
+
+| Wave | Ticket | Outcome | Prerequisites / coordination |
+| --- | --- | --- | --- |
+| 0a | #30 | Verify workflow contract and matching hosted bootstrap CI | #29; owns workflow/hosted evidence, not repository settings. |
+| 0b | #24 | Reconcile runner and workflow evidence; close parent | #29 and #30; parent assessment only after both children complete. |
+| 0c | #25 | Verify required merge checks and historical bootstrap evidence | #24; enforce the current gate on `develop`, retain #15's actual historical target and identify any original review/auto-merge evidence gap. |
+| 0d | #14 | Close CI prerequisite | #24 and #25; unresolved historical acceptance needs Mark's explicit decision, not a substituted claim. |
+| 1 | #20 ∥ #4 | Document configuration validation/export; initialize and serve a stored Page | Both wait for #14. #20 needs #19; #4 needs #2 and #19. #20 owns validation documentation/fixtures; #4 owns the application tracer and minimal agent guidance. |
+| 2 | #23 ∥ #5 | Review combined configuration contract; reject incompatible site versions | #23 needs #19/#20. #5 needs #4. Contract edits remain separate from application/version checks. |
+| 2 completion | #3 | Close Page configuration parent | #19/#20/#23 and parent acceptance evidence. #4 does not wait for all of #3. |
+| 3 | #6 ∥ #11 | Create/list Page drafts; export and validate active configuration | #6 needs #5. #11 needs #5/#20 and the relevant accepted contract review. Agree ownership of shared CLI/configuration files before launch. |
+| 4 | #7 | Edit an existing draft without history | #6; #11 may continue independently. |
+| 5 | #8 | Preview a saved draft with the public renderer | #7; #11 may continue independently. |
+| 6 | #9 | Publish an atomic immutable snapshot | #8; #11 may continue independently. |
+| 7 | #10 | Keep revised drafts private and preserve republish history | #9; #11 may continue independently. |
+| 8 | #12 | Initialize a second site from exported configuration and publish through its generated form | #10/#11; join the publishing and configuration lanes. |
+| 9 | #26 | Exercise the real Page journey in Chrome, including narrow viewport and accessibility checks | #10/#12 and their accepted contracts; owns browser journey and pinned setup. |
+| 10 | #31 | Add the fail-closed local phase gate | #26/#14 and retained #4/#5/#11/#12 suites; invoke the shared runner once, then the browser journey. |
+| 11 | #32 | Require the complete phase gate in hosted `Composure checks` | #31/#26/#14 and retained feature suites; verify real failed and passing candidate runs. |
+| 11 completion | #27 | Close local/hosted gate parent | #31/#32 and original parent criteria. |
+| 12 | #33 | Map phase acceptance to reviewed tests, runs and revisions | #10/#12/#14/#26/#31/#32; owns `docs/phase1/acceptance.md`. |
+| 13 | #34 | Write the Phase 2 handoff and evidence-based remaining-P0 estimate | #33/#32; owns the Phase 2 section of this plan. Use PRD audit requirements and #22's scope; schedule its detailed contract in Phase 2. |
+| Phase completion | #28 → #13 → #1 | Close evidence/handoff parent, browser/gate milestone and phase tracker | #28 needs #33/#34; #13 needs #26/#27/#28; #1 needs all Phase 1 work and verified exit evidence. |
+
+Issue #21 belongs to Phase 6 full recovery; #22 belongs to Phase 2 audit design. Neither blocks Phase 1. The older #34 requirement for an already accepted #22 design is replaced by a handoff that schedules that design with its first consumers in Phase 2.
+
+Coordinate ownership before starting parallel work; serialize overlapping file edits if necessary. Recheck candidates against current `develop` before merging. A passing feature branch does not prove its integration with another parallel change.
 
 ### Tracer bullets
 
@@ -59,7 +102,7 @@ Outcome: A local Go application persists and renders one example Page, proving t
 2. **Edit through to public output.** Use a minimal local admin form to save a Page draft, preview it, and publish it. Check that a second draft edit leaves the public response unchanged and that publishing records an immutable snapshot.
 3. **Prove configuration round-trip.** Export the minimal Page definition, validate it, and use it to initialize a second disposable site whose generated form can publish a Page. Reject an invalid definition before changing storage. This initial setup path becomes the explicit deployment path in phase 6.
 
-Exit evidence: A draft edit leaves the published Page unchanged; publishing replaces the public version and records a snapshot; data survives restart. Record decisions that affect later phases and split phase 2 into implementation tasks.
+Exit evidence: A draft edit leaves the published Page unchanged; publishing replaces the public version and records an immutable snapshot; data survives restart. Exported configuration initializes a second site whose generated form can publish a Page, and invalid configuration changes no storage. The retained local/hosted phase gate covers the real browser journey and negative cases. Record acceptance mappings, decisions, prototype limits and a Phase 2 task breakdown and estimate without opening Phase 2 implementation tickets.
 
 Dependencies: None. Establishes the basis for FR-03, FR-05, FR-06, FR-08, FR-15, FR-16, and FR-18.
 
@@ -72,7 +115,7 @@ Outcome: Real users can enter the admin with the correct permissions, and sensit
 - Add setup and server CLI commands, first-administrator creation, and account recovery without email.
 - Build sign-in, sign-out, secure sessions, CSRF controls, invitations, password resets through SMTP, and the PRD's advisory password warnings with explicit confirmation.
 - Enforce independent administrator and editor roles in direct requests and CLI operations. Preserve the last active administrator, revoke deactivated users' access, and retain attribution.
-- Build the shared admin navigation, site naming and branding, validation patterns, and administrator-only audit log. Record covered actions as each feature is added, including failures, without secrets.
+- Define the bounded audit contract in #22 with its first authentication consumers. Build shared admin navigation, site naming and branding, validation patterns, and the administrator-only audit log. Record covered actions, including failures, without secrets.
 - Establish safe upload handling before editorial file fields depend on it: allowed types, size limits, image re-encoding, safe storage and download behavior. Complete editorial media controls in phase 4.
 - Have Mark review authentication, authorization, session and upload controls before dependent production workflows proceed. Review later security-sensitive changes as they arise.
 
@@ -155,7 +198,7 @@ Outcome: Mark can promote reviewed configuration and recover a complete site usi
 
 - Complete configuration export, validation and diff commands for content types, fields, menus, image styles and other site settings. Active configuration lives in SQLite; exported versioned files support Git review. Keep deployment secrets external.
 - Build explicit deployment that validates and compares configuration, rejects silent content loss, takes a database backup, applies the change, starts the release and checks health. Ordinary startup only reads and checks active configuration.
-- Ship full versioned ZIP recovery exports only, with a consistent SQLite backup followed by a pinned immutable file set and verified manifest. No live database-file copy or partial portable imports.
+- Define the full recovery manifest in #21 with its first export/restore consumers. Ship full versioned ZIP recovery exports with a consistent SQLite backup followed by a pinned immutable file set and verified manifest. Portable partial export/import remains post-v1.
 - Restore into a fresh directory after validating versions, hashes and references; preserve the active-administrator invariant. Data-changing commands show the intended effect and useful script errors. Keep deployment secrets external.
 - Supply Caddy and systemd templates for independent site services, health and error reporting, and deployment and rollback instructions. Rehearse consistent database-and-file recovery. Document the operator's responsibility for scheduled, off-host backups.
 
@@ -203,7 +246,3 @@ Before phase 3 choose the rich-text bundle and sanitizer; before the phase 2 hos
 ## Boundary after v1
 
 Keep portable database/file export-import, scheduled publishing, a reusable media library, event sourcing and formal WCAG 2.2 AA audit work on the post-v1 roadmap. The keyboard, labels, focus and axe baseline is required in v1. Postgres, a plugin ecosystem, shared databases, a general-purpose site builder, visitor-write-heavy features and migration of a specific existing site are outside this release.
-
-## Immediate next step
-
-Start with the CI and auto-merge prerequisite in issue #14, then the shared contracts. Continue with phase 1, bullet 1: initialize a site, persist a Page and render it through a real HTTP request. Define that acceptance check first, then build only the code needed to pass it. Expand through the remaining phase 1 bullets before estimating the rest of the build.
