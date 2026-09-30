@@ -3,11 +3,12 @@
 <main><p><a href="/admin/pages">Pages</a></p><h1>{{.Heading}}</h1>
 {{if .Owner}}<p data-error-code="path_taken">That path is already used by <a href="/admin/pages/{{.Owner.ID}}/edit">{{.Owner.Title}}</a>.</p>{{end}}
 {{range .Errors}}<p data-error-code="{{.Code}}">{{.Message}}</p>{{end}}
-<form method="post" action="/admin/pages">
+<form method="post" action="{{.Action}}">
+{{if .Revision}}<input type="hidden" name="draft_revision" value="{{.Revision}}">{{end}}
 <div><label for="page-title">Title</label><input id="page-title" type="text" name="title" value="{{.Values.title}}" required></div>
 <div><label for="page-path">Path</label><input id="page-path" type="text" name="path" value="{{.Values.path}}" required></div>
 {{range .Fields}}<div><label for="page-field-{{.ID}}">{{.Label}}</label>
 {{if eq .Kind "short_text"}}<input id="page-field-{{.ID}}" type="text" name="{{.ID}}" value="{{.Value}}"{{if .HelpText}} aria-describedby="page-field-{{.ID}}-help"{{end}}{{if .Required}} required{{end}}>
 {{else}}<textarea id="page-field-{{.ID}}" name="{{.ID}}"{{if .HelpText}} aria-describedby="page-field-{{.ID}}-help"{{end}}{{if .Required}} required{{end}}>{{.TextareaValue}}</textarea>{{end}}
 {{if .HelpText}}<p id="page-field-{{.ID}}-help">{{.HelpText}}</p>{{end}}</div>{{end}}
-<button type="submit">Create Page</button></form></main></body></html>
+<button type="submit">{{.SubmitLabel}}</button></form></main></body></html>
