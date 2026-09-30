@@ -56,9 +56,11 @@ It then runs `go build ./...`, `go vet ./...`, `go test ./...`, and
 `go test -race ./...`. Go source without a valid root module fails instead of
 selecting bootstrap checks.
 
-The CI workflow runs this same command for pull requests, pushes to `main`,
-and manual dispatch. Configure `Composure checks` as a required status check
-for the base branch, `develop`.
+The current hosted CI workflow runs `bash scripts/test` for pull requests,
+pushes to `main`, and manual dispatch. The complete `bash scripts/test-phase1`
+gate, including the browser check, is local; hosted integration remains ticket
+32. Configure `Composure checks` as a required status check for the base
+branch, `develop`.
 
 For an explicit CI failure demonstration, a maintainer adds the
 `ci-failure-probe` label to the pull request. Label changes rerun the same
