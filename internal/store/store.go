@@ -124,11 +124,11 @@ func Initialize(ctx context.Context, path, siteID string, at time.Time, example 
 
 // Open checks identity, integrity and supported versions without running DDL.
 func Open(ctx context.Context, path string) (*Store, error) {
-	store, _, err := open(ctx, path, true)
+	store, _, err := open(ctx, path, true, false)
 	return store, err
 }
 
-func open(ctx context.Context, path string, validateDocument bool) (*Store, ActiveConfig, error) {
+func open(ctx context.Context, path string, validateDocument, readOnly bool) (*Store, ActiveConfig, error) {
 	var active ActiveConfig
 	db, err := connect(path)
 	if err != nil {
@@ -172,8 +172,10 @@ func open(ctx context.Context, path string, validateDocument bool) (*Store, Acti
 			return nil, active, &StateError{4, "active configuration is invalid: " + err.Error()}
 		}
 	}
-	if _, err = db.ExecContext(ctx, "PRAGMA query_only=ON"); err != nil {
-		return nil, active, err
+	if readOnly {
+		if _, err = db.ExecContext(ctx, "PRAGMA query_only=ON"); err != nil {
+			return nil, active, err
+		}
 	}
 	ok = true
 	return &Store{db}, active, nil
