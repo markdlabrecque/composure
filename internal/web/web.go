@@ -228,7 +228,7 @@ func Handler(repository content.Repository, port string) http.Handler {
 		var pathChange *content.PathChangeUnsupportedError
 		if errors.As(err, &pathChange) {
 			writeEditProblem(w, http.StatusUnprocessableEntity, item, definition, values, revisionText,
-				formProblem{Field: "path", Code: "path_change_unsupported", Message: fmt.Sprintf("Changing a published Page's path needs redirects, which arrive in a later phase. Keep %s for now.", pathChange.OwnedPath)}, nil)
+				formProblem{Field: "path", Code: "path_change_unsupported", Message: fmt.Sprintf("Changing a published Page's path needs redirects, which arrive in a later phase. Keep %s for now. Redirect support arrives in phase 5.", pathChange.OwnedPath)}, nil)
 			return
 		}
 		if errors.Is(err, content.ErrNotFound) {
@@ -267,7 +267,7 @@ func Handler(repository content.Repository, port string) http.Handler {
 		if errors.Is(err, content.ErrPathChangeUnsupported) {
 			var pathChange *content.PathChangeUnsupportedError
 			errors.As(err, &pathChange)
-			message := "Changing a published Page's path needs redirects, which arrive in a later phase."
+			message := "Changing a published Page's path needs redirects, which arrive in a later phase. Redirect support arrives in phase 5."
 			if pathChange != nil {
 				message += " Keep " + pathChange.OwnedPath + " for now."
 			}
