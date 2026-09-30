@@ -419,3 +419,17 @@ func TestConfigInitTicket12UnicodeLimits(t *testing.T) {
 		})
 	}
 }
+
+func TestConfigInitTicket12DefaultPlan(t *testing.T) {
+	dest := filepath.Join(t.TempDir(), "site")
+	plan := init12Command(t, 0, "", "", "--site", dest)
+	noSite(t, dest)
+	for _, line := range []string{
+		"  configuration:   built-in default, revision 1",
+		`  content types:   page "Page" (fields: body)`,
+	} {
+		if !strings.Contains(plan, line+"\n") {
+			t.Errorf("default plan missing contracted line %q: %q", line, plan)
+		}
+	}
+}
