@@ -198,6 +198,9 @@ func TestConfig11SyntaxOffsets(t *testing.T) {
 	}{
 		{"malformed", []byte(`{"format_version":1,"content_types":[`), 37},
 		{"trailing", []byte(`{} x`), 3},
+		{"object_trailing_comma", []byte(`{"a":1,}`), 7},
+		{"array_trailing_comma", []byte(`[1,]`), 3},
+		{"invalid_unicode_hex", []byte(`{"a":"x\u12X4"}`), 11},
 		{"utf8", []byte{'"', 0xff, '"'}, 1},
 		{"high", []byte(`{"label":"\uD800"}`), 10},
 		{"low", []byte(`{"label":"\uDC00"}`), 10},
@@ -409,4 +412,35 @@ func TestConfig11UsageAndInputIO(t *testing.T) {
 	dir := t.TempDir()
 	config11Command(t, root, 1, "", "", "validate", "--file", filepath.Join(dir, "missing"))
 	config11Command(t, root, 1, "", "", "validate", "--file", dir)
+}
+
+// Unknown verbs are untrusted argument text and must not inject physical lines.
+func TestConfig11UnknownVerbDiagnosticSingleLine(t *testing.T) {
+	for _, tc := range []struct{ name, verb string }{
+		{"line_feed", "unknown\nforged diagnostic"},
+		{"carriage_return", "unknown\rforged diagnostic"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			cmd := exec.CommandContext(ctx, binary, "config", tc.verb)
+			var out, diagnostic bytes.Buffer
+			cmd.Stdout, cmd.Stderr = &out, &diagnostic
+			err := cmd.Run()
+			if ctx.Err() != nil {
+				t.Fatal("unknown command timed out")
+			}
+			exit, ok := err.(*exec.ExitError)
+			if !ok || exit.ExitCode() != 2 {
+				t.Fatalf("unknown verb exit=%v want 2; stderr=%q", err, diagnostic.String())
+			}
+			if out.Len() != 0 {
+				t.Errorf("unknown verb stdout=%q", out.String())
+			}
+			line := strings.TrimSuffix(diagnostic.String(), "\n")
+			if !strings.HasPrefix(line, "composure config") || strings.ContainsAny(line, "\r\n") || strings.Contains(line, tc.verb) {
+				t.Errorf("unknown verb must produce one prefixed stderr line without raw argument controls: %q", diagnostic.String())
+			}
+		})
+	}
 }
