@@ -12,7 +12,7 @@ type ActiveConfig struct {
 // ReadActiveConfig applies the usual site identity, integrity and version
 // guards, then returns the stored document without validating its contents.
 func ReadActiveConfig(ctx context.Context, path string) (ActiveConfig, error) {
-	opened, active, err := open(ctx, path, false)
+	opened, active, err := open(ctx, path, false, true)
 	if err != nil {
 		return ActiveConfig{}, err
 	}

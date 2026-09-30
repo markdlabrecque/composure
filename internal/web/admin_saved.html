@@ -1,0 +1,5 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="stylesheet" href="/admin/static/admin.css"><title>{{.Item.Title}}</title></head><body>
+<main><p><a href="/admin/pages">Pages</a></p><h1>{{.Item.Title}}</h1><p>{{.Item.Path}}</p><p>Draft saved</p>
+{{range .Fields}}<section><h2>{{.Label}}</h2>{{if eq .Kind "long_text"}}<div class="long-value">{{.Value}}</div>{{else}}<p>{{.Value}}</p>{{end}}</section>{{end}}
+</main></body></html>
