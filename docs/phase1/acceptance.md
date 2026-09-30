@@ -4,18 +4,26 @@ Phase 1 proves a local, loopback-only Page prototype and its draft/publication m
 
 ## Reproduce the prototype
 
-Use an empty working directory for both sites. The custom example requires a body, so it demonstrates validation while leaving editorial content out of the configuration export. These commands initialize site B from configuration only; they do not seed it with content.
+Use empty site directories. Site A includes the fixed example Page so the second-site demo can prove its content was not copied. The custom configuration gives the required `body` field the label `Story`; export carries that definition, and site B is initialized from it without `--example`.
 
 ```sh
 CGO_ENABLED=0 go build -o /tmp/composure ./cmd/composure
-/tmp/composure init --site /tmp/composure-a --config docs/phase1/examples/page-config-custom.json --apply
+/tmp/composure init --site /tmp/composure-a --config docs/phase1/examples/page-config-custom.json --example --apply
 /tmp/composure config export --site /tmp/composure-a --out /tmp/composure-page.json
 /tmp/composure config validate --file /tmp/composure-page.json
 /tmp/composure init --site /tmp/composure-b --config /tmp/composure-page.json --apply
+/tmp/composure serve --site /tmp/composure-b --addr 127.0.0.1:8081
+```
+
+In a separate terminal, keep the exported source site running to check isolation:
+
+```sh
 /tmp/composure serve --site /tmp/composure-a --addr 127.0.0.1:8080
 ```
 
-In Firefox, open `http://127.0.0.1:8080/admin/pages/new`. Enter title `About` and path `about`, then submit without the required body; the form reports the validation error and retains the entered values. Set the body to `A`, create/save the draft, open its saved-draft preview, then publish it. Edit the saved Page, change the body to `B`, save, and open the saved-draft preview. In a separate request, `curl http://127.0.0.1:8080/about` still returns published `A`. Publish the saved draft, stop and restart the server with the same `serve` command, and verify that the public request now returns `B`. In a second terminal, serve site B on port 8081, create a Page with title `About B`, path `second-about`, and body `Independent site B`, then publish it through the generated form; `curl http://127.0.0.1:8081/second-about` returns its content while site A remains independent. This manual sequence complements the automated browser and process tests; it is not a v1 operational rehearsal.
+In Firefox, open `http://127.0.0.1:8081/admin/pages/new`. Fill the `Title` control with `About`, `Path` with `about`, and `Story` with three spaces, then click `Create Page`. The browser's native required-field check accepts whitespace; the server rejects the trimmed empty Story with a `required` error and returns the entered title, path, and Story value. Replace Story with `A` and click `Create Page` again. On the edit page, click `Preview saved draft` and confirm it shows A. Return to edit, click `Publish saved draft`, and run `curl http://127.0.0.1:8081/about`; it returns public A.
+
+Change `Story` to `B` and click `Save changes`. Click `Preview saved draft`; it shows B. While the browser is on that preview, make a separate public request with `curl http://127.0.0.1:8081/about`; it still returns A. Return to edit and click `Publish saved draft`; the same public request now returns B. Stop the B server and restart it with the exact port-8081 `serve` command above. After restart, `curl http://127.0.0.1:8081/about` still returns B. Source site A remains independent: `curl http://127.0.0.1:8080/about` returns 404 and `/example` still returns A's example Page, while `curl http://127.0.0.1:8081/example` returns 404. The retained [`TestPhase1ConfigRoundTrip`](../../tests/integration/config_init_ticket12_test.go) also verifies that a seeded source site's editorial rows are not copied into the configuration-initialized second site. This manual sequence complements the automated browser and process tests; it is not a v1 operational rehearsal.
 
 For the exact pinned browser setup and full local gate, see [`docs/testing.md`](../testing.md). From the repository root:
 
@@ -44,15 +52,17 @@ The first command installs Python Playwright 1.58.0, Chromium/headless-shell rev
 
 The full-gate hosted result is separate from the earlier gate stages: #31's [PR #179](https://github.com/markdlabrecque/composure/pull/179) merged at `313e3e90ebaa9ef228b6fe44d0934471b8bf7a6a`; its hosted run exercised the Go/shared runner before browser integration. #32's [PR #180](https://github.com/markdlabrecque/composure/pull/180) added the pinned browser installation and phase gate to the existing `Composure checks` job. Its final run proves the full gate. Earlier bootstrap-only green checks are not application acceptance evidence.
 
+The hosted Go test log reports package-level results; it does not print the names of individual Go tests. Named Go methods in this report are taken from active retained test source files and were exercised by `go test ./...` in the full gate. The hosted run is evidence for the Go package suites and browser tests, not a per-test listing in its log.
+
 For the full hosted gate, reviewed PR head is `56c520cac18fa5c158205ca11fa3ca92b7619600`, base is `313e3e90ebaa9ef228b6fe44d0934471b8bf7a6a`, and CI checked synthetic merge `e313c07f51e6fa782d1ced11d99ce18ddec70b8e`, with those exact head and base parents. Deliberate-failure [run 36773947493](https://github.com/markdlabrecque/composure/actions/runs/36773947493) and restored passing [run 36774145385](https://github.com/markdlabrecque/composure/actions/runs/36774145385) have retained logs. The passing workflow checks build, vet, Go tests, race tests, and six browser tests. PR #180 merged at `e4b571ae738bf908ebcc24a27d9aae0b77343e0b`; its merge tree matches the tested source head tree.
 
 The squash-merged source trees were checked against the merged commits: PR #57 head `e21f66c430ea522596a59759a053100142b1d933` and merge `d374c282aaf673e14155842d6bbf5ba0080aac97` share tree `7f234d490c461dbc29aa20867e28ae77f9c1f0bb`; PR #177 head `c66b364c5649efda146418ab493fb1fa740b4457` and merge `07ab3c5e500fdc50260e357e7c1026d04aee9cfc` share tree `8d10e0829355b60a388d671836f2b6d24b108aeb`; PR #178 head `34a4311fb18832f1bb45dd021e55d91d03df3871` and merge `66d0f67d66917bbafa80c46e97585a9451bcc335` share tree `3a6944d0090bbf238f93b33a283cfe3786443db1`; PR #179 head `52b6e1c9ca97593b818f46f08a7a8a6da83dda95` and merge `313e3e90ebaa9ef228b6fe44d0934471b8bf7a6a` share tree `49bda225bc37d2c88eea7e750e434bab07f4bf8c`. These merged commits are ancestors of the current evidence baseline. The PR source heads themselves are not described as ancestors because these PRs were squash-merged.
 
-Independent Sol reviews approved the #12, #26, and #31 candidates at their two-round cap; their retained records say further review could still find defects. #32 received independent Sol approval for its source candidate and final hosted evidence. These agent reviews do not constitute the PRD's human security sign-off.
+The #12 and #26 completion records note that their two-round review caps left room for more review. #31's second-round Sol review approved its exact candidate with no outstanding findings; the review's two-round cap does not establish exhaustiveness. #32 received independent Sol approval for its source candidate and final hosted evidence. At this author handoff, this report's first-round review returned a bounce. The final verdict belongs in the [issue #33 completion record](https://github.com/markdlabrecque/composure/issues/33). Agent reviews do not constitute the PRD's human security sign-off.
 
 ## Author validation of this report
 
-The report candidate was authored on branch `33` at code baseline `e4b571ae738bf908ebcc24a27d9aae0b77343e0b`; it changes only this report. On Go 1.27.1 / macOS arm64, the first `bash scripts/test-phase1` correctly failed closed because the pinned browser Python environment was absent, after 38 contract tests and all Go build, vet, test, and race checks passed. `bash scripts/install-browser-tests` installed Playwright 1.58.0, Chromium revision 1208, and axe-core 4.11.0. The final `bash scripts/test-phase1` then passed all 38 contract tests, `go build ./...`, `go vet ./...`, `go test ./...`, `go test -race ./...`, and all 6 Chromium tests. Eighteen axe audits reported zero violations; some color-contrast checks were incomplete. `git diff --cached --check` and `git diff --check` passed. These author-stage checks validate the report candidate and current merged implementation; the candidate has not yet received independent review.
+The report candidate was authored on branch `33` at code baseline `e4b571ae738bf908ebcc24a27d9aae0b77343e0b`; it changes only this report. On Go 1.27.1 / macOS arm64, the first `bash scripts/test-phase1` correctly failed closed because the pinned browser Python environment was absent, after 38 contract tests and all Go build, vet, test, and race checks passed. `bash scripts/install-browser-tests` installed Playwright 1.58.0, Chromium revision 1208, and axe-core 4.11.0. The gate then passed all 38 contract tests, `go build ./...`, `go vet ./...`, `go test ./...`, `go test -race ./...`, and all 6 Chromium tests. After correcting the first-round review findings, I reran `bash scripts/test-phase1`; it passed again. Eighteen axe audits reported zero violations; some color-contrast checks were incomplete. `git diff --check` passed. At this author handoff, the first independent report review returned a bounce; the final verdict is recorded in the [issue #33 completion record](https://github.com/markdlabrecque/composure/issues/33).
 
 ## Phase 1 exit promises
 
