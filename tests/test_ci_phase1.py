@@ -108,6 +108,8 @@ class CIPhase1Tests(unittest.TestCase):
         self.assertEqual(len(re.findall(r"^  \w+:$", source.split("jobs:\n", 1)[1], re.MULTILINE)), 1)
 
     def test_workflow_commands_propagate_browser_probe_and_failure(self):
+        from test_ci_staticcheck import LEASE_HELPER, known_scan_output
+
         _, steps = workflow_steps()
         with tempfile.TemporaryDirectory(prefix="composure CI fixture ") as directory:
             root = Path(directory)
@@ -115,6 +117,10 @@ class CIPhase1Tests(unittest.TestCase):
             (root / ".venv-browser/bin").mkdir(parents=True)
             (root / "go.mod").write_text("module example.test/ci\n")
             (root / "scripts/test-phase1").write_bytes((REPO / "scripts/test-phase1").read_bytes())
+            if any(LEASE_HELPER in command for command, _ in steps):
+                helper = REPO / LEASE_HELPER
+                self.assertTrue(helper.is_file(), "missing workflow helper: " + LEASE_HELPER)
+                (root / LEASE_HELPER).write_bytes(helper.read_bytes())
             log = root / "calls"
             tools = root / "tools"
             tools.mkdir()
@@ -156,6 +162,10 @@ class CIPhase1Tests(unittest.TestCase):
                     with open(os.environ["CALL_LOG"], "a") as log:
                         prefix = "staticcheck" if name == "staticcheck" else "scanner"
                         log.write(prefix + ":./...\\n")
+                    if name == "staticcheck" and args != ["./..."]:
+                        # A clean scan expires the lease. Reproduce its exact real premise.
+                        print(os.environ["STATICCHECK_JSON"], end="")
+                        raise SystemExit(1)
                 ''')
             for name in ("go", "govulncheck", "staticcheck"):
                 path = tools / name
@@ -196,6 +206,7 @@ class CIPhase1Tests(unittest.TestCase):
                             env = {"PATH": str(tools), "HOME": str(root),
                                    "GOPATH": str(root / "go"), "PINNED_SCANNER": PINNED_SCANNER,
                                    "PINNED_STATICCHECK": PINNED_STATICCHECK,
+                                   "STATICCHECK_JSON": known_scan_output(str(root) + "/"),
                                    "CALL_LOG": str(log), PROBE: "0", "COMPOSURE_CI_FAILURE_PROBE": "0"}
                             for key, value in environment.items():
                                 # Exact expression semantics are checked separately above.

@@ -1,9 +1,9 @@
 """Required-job Staticcheck wiring, using isolated fake tools.
 
 Run: python3 -m unittest discover -s tests -p test_ci_staticcheck.py -v
-These tests do not establish a clean real Staticcheck result. A warning lease
-needs additional cases using the real pinned scan's declared known findings;
-synthetic diagnostics here are unknown findings, never lease entries.
+These tests do not establish a clean real Staticcheck result. Lease cases use
+exact diagnostics captured from the real pinned scan. Synthetic diagnostics
+remain unknown findings, never additional lease entries.
 """
 
 from __future__ import annotations
@@ -30,6 +30,34 @@ REPO = Path(__file__).resolve().parents[1]
 # its .mod requires Go 1.26.0. lintcmd/cmd.go shows shared exit code 1.
 INSTALL = "honnef.co/go/tools/cmd/staticcheck@v0.8.1"
 GOVULN_INSTALL = "golang.org/x/vuln/cmd/govulncheck@v1.3.0"
+LEASE_HELPER = "scripts/check-staticcheck-phase2.py"
+# Captured from the installed v0.8.1 tool on 8e559980, not invented findings.
+# Only the checkout's absolute prefix was removed from location/end.file.
+KNOWN_DIAGNOSTICS = (
+    {"code": "U1000", "severity": "error",
+     "location": {"file": "internal/config/config.go", "line": 47, "column": 6},
+     "end": {"file": "", "line": 0, "column": 0}, "message": "func integer is unused"},
+    {"code": "U1000", "severity": "error",
+     "location": {"file": "internal/config/validate.go", "line": 407, "column": 6},
+     "end": {"file": "", "line": 0, "column": 0}, "message": "func isJSONSpace is unused"},
+    {"code": "ST1005", "severity": "error",
+     "location": {"file": "internal/content/content.go", "line": 25, "column": 27},
+     "end": {"file": "internal/content/content.go", "line": 25, "column": 66},
+     "message": "error strings should not be capitalized"},
+    {"code": "U1000", "severity": "error",
+     "location": {"file": "internal/web/web.go", "line": 33, "column": 5},
+     "end": {"file": "", "line": 0, "column": 0}, "message": "var savedPageTemplate is unused"},
+)
+
+
+def known_scan_output(prefix: str = "__FIXTURE_ROOT__/") -> str:
+    """Reproduce the pinned scanner's JSON lines at a different checkout root."""
+    diagnostics = json.loads(json.dumps(KNOWN_DIAGNOSTICS))
+    for diagnostic in diagnostics:
+        for key in ("location", "end"):
+            if diagnostic[key]["file"]:
+                diagnostic[key]["file"] = prefix + diagnostic[key]["file"]
+    return "".join(json.dumps(diagnostic) + "\n" for diagnostic in diagnostics)
 
 
 def script_paths(command: str) -> list[str]:
@@ -64,7 +92,7 @@ class CIStaticcheckTests(unittest.TestCase):
 
     def run_commands(self, selected: list[str], *, scan_status: int = 0,
                      install_status: int = 0, categories: tuple[str, ...] = (),
-                     stderr: str = "") -> tuple[int, list[dict], str]:
+                     stderr: str = "", stdout: str = "") -> tuple[int, list[dict], str]:
         """Run actual workflow shell/helper text, never real Go or a real scanner.
 
         JSON diagnostics match lintcmd/format.go at official tag 2026.2.1.
@@ -88,7 +116,7 @@ class CIStaticcheckTests(unittest.TestCase):
                 args = sys.argv[1:]
                 with open(os.environ["CALL_LOG"], "a") as log:
                     log.write(json.dumps({"tool": name, "args": args,
-                                          "cwd": os.getcwd()}) + "\\n")
+                                          "cwd": os.getcwd(), "executable": sys.argv[0]}) + "\\n")
                 if name == "go":
                     if args == ["env", "GOPATH"]:
                         print(os.environ["GOPATH"])
@@ -113,6 +141,7 @@ class CIStaticcheckTests(unittest.TestCase):
                     if args not in (["./..."], ["-f", "json", "./..."], ["-f=json", "./..."]):
                         print("unexpected scanner invocation: " + repr(args), file=sys.stderr)
                         raise SystemExit(93)
+                    print(os.environ["SCAN_STDOUT"], end="")
                     for category in json.loads(os.environ["CATEGORIES"]):
                         message = "fixture-only unexpected diagnostic"
                         location = {"file": "fixture/unknown.go", "line": 7, "column": 2}
@@ -136,7 +165,18 @@ class CIStaticcheckTests(unittest.TestCase):
                 executable = shutil.which(name)
                 if executable:
                     (tools / name).symlink_to(executable)
-            (tools / "python3").symlink_to(sys.executable)
+            # Record the real helper invocation, then execute its unmodified code.
+            python = tools / "python3"
+            python.write_text("#!" + sys.executable + "\n" + textwrap.dedent('''\
+                import json
+                import os
+                import sys
+                with open(os.environ["CALL_LOG"], "a") as log:
+                    log.write(json.dumps({"tool": "python3", "args": sys.argv[1:],
+                                          "cwd": os.getcwd()}) + "\\n")
+                os.execv(sys.executable, [sys.executable, *sys.argv[1:]])
+                '''))
+            python.chmod(0o755)
             for step in selected:
                 for name in script_paths(field(step, "run", 8) or ""):
                     source = REPO / name
@@ -154,7 +194,7 @@ class CIStaticcheckTests(unittest.TestCase):
                 "CALL_LOG": str(log), "STATICCHECK_INSTALL": INSTALL,
                 "GOVULN_INSTALL": GOVULN_INSTALL, "SCAN_STATUS": str(scan_status),
                 "INSTALL_STATUS": str(install_status), "CATEGORIES": json.dumps(categories),
-                "SCAN_STDERR": stderr,
+                "SCAN_STDERR": stderr, "SCAN_STDOUT": stdout.replace("__FIXTURE_ROOT__", str(root)),
             }
             status = 0
             output = []
@@ -179,7 +219,7 @@ class CIStaticcheckTests(unittest.TestCase):
                         value = value.replace("${{ github.workspace }}", str(root))
                         self.assertNotIn("${{", value)
                         self.assertNotIn(key, ("PATH", "CALL_LOG", "SCAN_STATUS", "INSTALL_STATUS",
-                                              "CATEGORIES", "SCAN_STDERR", "STATICCHECK_INSTALL",
+                                              "CATEGORIES", "SCAN_STDERR", "SCAN_STDOUT", "STATICCHECK_INSTALL",
                                               "GOVULN_INSTALL"), "do not bypass fixture isolation")
                         if key in ("GOBIN", "GOPATH"):
                             self.assertTrue(Path(value).is_relative_to(root))
@@ -383,3 +423,202 @@ class StaticcheckFixtureTests(unittest.TestCase):
         ])
         self.assertEqual(status, 0)
         self.assertEqual(calls, [])
+
+
+class StaticcheckLeaseFixtureTests(unittest.TestCase):
+    def test_fake_scanner_reproduces_real_json_and_shared_exit_one(self) -> None:
+        fixture = CIStaticcheckTests()
+        block = "name: Raw captured scan\n        run: staticcheck -f json ./...\n"
+        status, calls, output = fixture.run_commands(
+            [block], scan_status=1, stdout=known_scan_output(),
+        )
+        self.assertEqual(status, 1)
+        self.assertEqual(calls[0]["args"], ["-f", "json", "./..."])
+        root = calls[0]["cwd"]
+        self.assertEqual(output, known_scan_output(root + "/"))
+        self.assertEqual(len(output.splitlines()), 4)
+        status, _, output = fixture.run_commands(
+            [block], scan_status=1, stdout="not JSON\n", stderr="tool failed",
+        )
+        self.assertEqual(status, 1)
+        self.assertIn("not JSON", output)
+        self.assertIn("tool failed", output)
+
+
+class CIStaticcheckWarningLeaseTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.fixture = CIStaticcheckTests()
+        self.fixture.setUp()
+
+    def selected(self) -> list[str]:
+        # Fail first for missing CI wiring, not a failed attempt to import a helper.
+        selected = self.fixture.selected()
+        commands = "\n".join(field(step, "run", 8) or "" for step in selected)
+        self.assertIn(LEASE_HELPER, script_paths(commands),
+                      "CI must invoke the bounded Phase 2 warning helper")
+        self.assertTrue((REPO / LEASE_HELPER).is_file(),
+                        "required warning-lease API is missing: " + LEASE_HELPER)
+        return selected
+
+    def assert_scan(self, calls: list[dict], output: str) -> None:
+        installs = [call for call in calls if call["tool"] == "go"
+                    and call["args"] == ["install", INSTALL]]
+        scans = [call for call in calls if call["tool"] == "staticcheck"]
+        helpers = [call for call in calls if call["tool"] == "python3"
+                   and call["args"][:1] == [LEASE_HELPER]]
+        self.assertEqual(len(installs), 1, output)
+        self.assertEqual(len(helpers), 1, "execute the helper, do not merely mention it: " + output)
+        self.assertEqual(len(helpers[0]["args"]), 2,
+                         "helper API: python3 scripts/check-staticcheck-phase2.py SCANNER")
+        self.assertEqual(len(scans), 1, output)
+        self.assertIn(scans[0]["args"], (["-f", "json", "./..."], ["-f=json", "./..."]))
+        self.assertLess(calls.index(installs[0]), calls.index(helpers[0]))
+        self.assertLess(calls.index(helpers[0]), calls.index(scans[0]))
+        # The supplied scanner must be the freshly installed binary, not PATH's stale copy.
+        supplied = Path(helpers[0]["args"][1])
+        self.assertTrue(supplied.is_absolute(), output)
+        self.assertEqual(supplied.name, "staticcheck", output)
+        self.assertTrue(supplied.is_relative_to(Path(helpers[0]["cwd"])), output)
+        self.assertNotEqual(supplied.parent.name, "tools", output)
+        self.assertEqual(Path(scans[0]["executable"]), supplied,
+                         "helper must run its supplied freshly installed scanner")
+
+    def test_exact_four_real_findings_warn_and_pass_required_step(self) -> None:
+        selected = self.selected()
+        for stdout in (known_scan_output(),
+                       "".join(reversed(known_scan_output().splitlines(keepends=True)))):
+            with self.subTest(order=stdout):
+                status, calls, output = self.fixture.run_commands(
+                    selected, scan_status=1, stdout=stdout,
+                )
+                self.assert_scan(calls, output)
+                self.assertEqual(status, 0, "only this exact known set may warn: " + output)
+                self.assertRegex(output.lower(), r"warning")
+                self.assertRegex(output, r"#?172\b", "warning must name the cleanup ticket")
+
+    def test_helper_cli_itself_validates_the_captured_scan(self) -> None:
+        self.selected()
+        # This is a test command invoking the future production file, not a stub.
+        block = ("name: Helper API\n        run: |\n"
+                 "          export GOBIN=\"$(go env GOPATH)/bin\"\n"
+                 "          go install " + INSTALL + "\n"
+                 "          python3 " + LEASE_HELPER + " \"$GOBIN/staticcheck\"\n")
+        status, calls, output = self.fixture.run_commands(
+            [block], scan_status=1, stdout=known_scan_output(),
+        )
+        self.assert_scan(calls, output)
+        self.assertEqual(status, 0, output)
+        self.assertIn("warning", output.lower())
+
+    def test_removing_any_known_finding_expires_the_lease(self) -> None:
+        selected = self.selected()
+        lines = known_scan_output().splitlines(keepends=True)
+        for index in range(4):
+            with self.subTest(removed=KNOWN_DIAGNOSTICS[index]):
+                status, calls, output = self.fixture.run_commands(
+                    selected, scan_status=1, stdout="".join(lines[:index] + lines[index + 1:]),
+                )
+                self.assert_scan(calls, output)
+                self.assertNotEqual(status, 0, "partially fixed lease must be removed/updated: " + output)
+
+    def test_clean_scan_expires_the_lease_instead_of_becoming_permanent_green(self) -> None:
+        status, calls, output = self.fixture.run_commands(self.selected(), scan_status=0)
+        self.assert_scan(calls, output)
+        self.assertNotEqual(status, 0, "clean scan must force #172 to remove this exception: " + output)
+
+    def test_extra_unknown_duplicate_compile_or_config_findings_fail_closed(self) -> None:
+        selected = self.selected()
+        extras = [KNOWN_DIAGNOSTICS[0],
+                  {**KNOWN_DIAGNOSTICS[0], "code": "SA1019"},
+                  {**KNOWN_DIAGNOSTICS[0], "code": "compile"},
+                  {**KNOWN_DIAGNOSTICS[0], "code": "config"},
+                  {**KNOWN_DIAGNOSTICS[0], "code": "U1000", "message": "func newUnused is unused"}]
+        related = json.loads(json.dumps(KNOWN_DIAGNOSTICS))
+        related[0]["related"] = [{"location": related[0]["location"],
+                                   "end": related[0]["end"], "message": "new related finding"}]
+        status, calls, output = self.fixture.run_commands(
+            selected, scan_status=1,
+            stdout="".join(json.dumps(item) + "\n" for item in related),
+        )
+        self.assert_scan(calls, output)
+        self.assertNotEqual(status, 0, "new related diagnostics are not leased: " + output)
+        for extra in extras:
+            with self.subTest(extra=extra):
+                status, calls, output = self.fixture.run_commands(
+                    selected, scan_status=1,
+                    stdout=known_scan_output() + json.dumps(extra) + "\n",
+                )
+                self.assert_scan(calls, output)
+                self.assertNotEqual(status, 0, "only the exact four-item set is leased: " + output)
+
+    def test_exact_codes_messages_severity_and_locations_cannot_be_normalized_away(self) -> None:
+        selected = self.selected()
+        mutations = [("code", None, "ST1005"), ("severity", None, "warning"),
+                     ("message", None, "func integer is unused "),
+                     ("message", None, "FUNC integer is unused"),
+                     ("location", "file", "other/internal/config/config.go"),
+                     ("location", "line", 48), ("location", "column", 7),
+                     ("end", "file", "internal/config/config.go"),
+                     ("end", "line", 1), ("end", "column", 1)]
+        for key, nested, value in mutations:
+            with self.subTest(key=key, nested=nested, value=value):
+                diagnostics = json.loads(json.dumps(KNOWN_DIAGNOSTICS))
+                if nested:
+                    diagnostics[0][key][nested] = value
+                else:
+                    diagnostics[0][key] = value
+                status, calls, output = self.fixture.run_commands(
+                    selected, scan_status=1,
+                    stdout="".join(json.dumps(item) + "\n" for item in diagnostics),
+                )
+                self.assert_scan(calls, output)
+                self.assertNotEqual(status, 0, "changed finding must not match the lease: " + output)
+        # ST1005 has a real nonempty end position, which must also match exactly.
+        for key, value in (("file", "internal/config/config.go"), ("line", 26), ("column", 67)):
+            with self.subTest(st1005_end=key):
+                diagnostics = json.loads(json.dumps(KNOWN_DIAGNOSTICS))
+                diagnostics[2]["end"][key] = value
+                status, calls, output = self.fixture.run_commands(
+                    selected, scan_status=1,
+                    stdout="".join(json.dumps(item) + "\n" for item in diagnostics),
+                )
+                self.assert_scan(calls, output)
+                self.assertNotEqual(status, 0, output)
+
+    def test_malformed_json_or_diagnostic_schema_fails_closed(self) -> None:
+        selected = self.selected()
+        raw = known_scan_output()
+        invalid = ["not JSON\n", raw + "tool crashed\n", raw[:-3],
+                   "[]\n", "null\n", "42\n", "{}\n", raw + "{}\n"]
+        for key in ("code", "severity", "location", "end", "message"):
+            diagnostics = json.loads(json.dumps(KNOWN_DIAGNOSTICS))
+            del diagnostics[0][key]
+            invalid.append("".join(json.dumps(item) + "\n" for item in diagnostics))
+        for key, value in (("line", "47"), ("line", True), ("column", None)):
+            diagnostics = json.loads(json.dumps(KNOWN_DIAGNOSTICS))
+            diagnostics[0]["location"][key] = value
+            invalid.append("".join(json.dumps(item) + "\n" for item in diagnostics))
+        for stdout in invalid:
+            with self.subTest(stdout=stdout):
+                status, calls, output = self.fixture.run_commands(selected, scan_status=1, stdout=stdout)
+                self.assert_scan(calls, output)
+                self.assertNotEqual(status, 0, "malformed scan output was accepted: " + output)
+
+    def test_known_json_does_not_hide_tool_errors_or_inconsistent_exit_status(self) -> None:
+        selected = self.selected()
+        for code, stderr in ((1, "cache initialization failed"), (1, "invalid staticcheck.conf"),
+                             (0, ""), (2, ""), (17, "runtime failure"), (127, "command not found")):
+            with self.subTest(code=code, stderr=stderr):
+                status, calls, output = self.fixture.run_commands(
+                    selected, scan_status=code, stdout=known_scan_output(), stderr=stderr,
+                )
+                self.assert_scan(calls, output)
+                self.assertNotEqual(status, 0, "known JSON cannot excuse tool failure: " + output)
+
+    def test_install_failure_cannot_accept_known_json_from_a_stale_binary(self) -> None:
+        status, calls, output = self.fixture.run_commands(
+            self.selected(), install_status=23, scan_status=1, stdout=known_scan_output(),
+        )
+        self.assertNotEqual(status, 0, output)
+        self.assertTrue(any(call["args"] == ["install", INSTALL] for call in calls), output)
+        self.assertFalse(any(call["tool"] == "staticcheck" for call in calls), output)
