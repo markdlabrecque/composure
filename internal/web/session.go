@@ -33,6 +33,9 @@ type authenticatedSession struct {
 // downstream route guards.
 func SessionMiddleware(loader SessionLoader, now func() time.Time, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Shadow any session established by an outer middleware instance before
+		// checking this request's credentials. A refusal must not retain stale auth.
+		r = r.WithContext(context.WithValue(r.Context(), sessionContextKey{}, authenticatedSession{}))
 		credential, count, malformed := securityCookie(r, sessionCookieName)
 		_, nonceCount, nonceMalformed := securityCookie(r, csrfNonceCookieName)
 		if malformed || nonceMalformed || count > 1 || nonceCount > 1 {
@@ -44,8 +47,12 @@ func SessionMiddleware(loader SessionLoader, now func() time.Time, next http.Han
 			return
 		}
 
+		if len(credential) != 43 {
+			next.ServeHTTP(w, r)
+			return
+		}
 		raw, err := base64.RawURLEncoding.Strict().DecodeString(credential)
-		if err != nil || len(credential) != 43 || len(raw) != sessionCredentialSize || base64.RawURLEncoding.EncodeToString(raw) != credential {
+		if err != nil || len(raw) != sessionCredentialSize || base64.RawURLEncoding.EncodeToString(raw) != credential {
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -80,7 +87,7 @@ func SessionMiddleware(loader SessionLoader, now func() time.Time, next http.Han
 // middleware established a fully matching, active authenticated context.
 func SessionFromContext(ctx context.Context) (store.Session, store.Account, bool) {
 	state, ok := ctx.Value(sessionContextKey{}).(authenticatedSession)
-	if !ok {
+	if !ok || state.session.ID == "" || state.session.AccountID == "" || state.account.ID == "" {
 		return store.Session{}, store.Account{}, false
 	}
 	return state.session, state.account, true
