@@ -4,12 +4,14 @@ package store
 import (
 	"context"
 	"database/sql"
-	_ "embed"
+	"embed"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"net/url"
 	"path/filepath"
+	"sort"
 	"time"
 
 	"github.com/markdlabrecque/composure/internal/config"
@@ -17,8 +19,8 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-//go:embed schema.sql
-var schema string
+//go:embed schema/*.sql
+var schemaFiles embed.FS
 
 const ApplicationID = 0x434D5053
 const SchemaVersion = 1
@@ -83,11 +85,27 @@ func InitializeWithConfig(ctx context.Context, path, siteID string, at time.Time
 		query string
 		args  []any
 	}{
-		{schema, nil},
 		{"PRAGMA application_id=1129140307", nil},
 		{"PRAGMA user_version=1", nil},
 		{`INSERT INTO site VALUES(1,?,?,1)`, []any{siteID, timestamp}},
 		{`INSERT INTO active_config VALUES(1,1,?,?,?)`, []any{string(document), timestamp, "local-prototype"}},
+	}
+	migrations, err := fs.ReadDir(schemaFiles, "schema")
+	if err != nil {
+		return err
+	}
+	sort.Slice(migrations, func(i, j int) bool { return migrations[i].Name() < migrations[j].Name() })
+	for _, migration := range migrations {
+		if migration.IsDir() {
+			continue
+		}
+		query, readErr := schemaFiles.ReadFile("schema/" + migration.Name())
+		if readErr != nil {
+			return readErr
+		}
+		if _, err = tx.ExecContext(ctx, string(query)); err != nil {
+			return err
+		}
 	}
 	for _, s := range statements {
 		if _, err = tx.ExecContext(ctx, s.query, s.args...); err != nil {
