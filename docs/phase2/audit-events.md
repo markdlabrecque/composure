@@ -2,6 +2,7 @@
 
 Status: Contract in progress. The event envelope is defined in [01-envelope.md](audit-events/01-envelope.md). Later sections will define covered actions and recording time, redaction, and counted failures and retention as those decisions are accepted.
 
+- [02 Covered actions and recording time](audit-events/02-actions.md)
 - [03 Redaction allowlist](audit-events/03-redaction.md)
 
 These documents define a future audit contract. They do not mean audit recording or an audit screen is implemented. The audit log records selected actions and does not reconstruct site state.
