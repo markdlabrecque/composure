@@ -35,11 +35,11 @@ func TestAccountSchemaInitialized(t *testing.T) {
 		t.Fatalf("new accounts count = %d, want 0", n)
 	}
 	var sessions int
-	if err := s.db.QueryRow("SELECT count(*) FROM sqlite_schema WHERE name='sessions'").Scan(&sessions); err != nil {
+	if err := s.db.QueryRow("SELECT count(*) FROM sqlite_schema WHERE type='table' AND name='sessions'").Scan(&sessions); err != nil {
 		t.Fatal(err)
 	}
-	if sessions != 0 {
-		t.Fatal("account initialization unexpectedly created sessions")
+	if sessions != 1 {
+		t.Fatalf("initialized sessions table count = %d, want 1", sessions)
 	}
 }
 
