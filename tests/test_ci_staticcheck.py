@@ -1,9 +1,9 @@
 """Required-job Staticcheck wiring, using isolated fake tools.
 
 Run: python3 -m unittest discover -s tests -p test_ci_staticcheck.py -v
-These tests do not establish a clean real Staticcheck result. Lease cases use
-exact diagnostics captured from the real pinned scan. Synthetic diagnostics
-remain unknown findings, never additional lease entries.
+These tests do not establish a clean real Staticcheck result. Strict-policy
+cases use captured former exceptions and synthetic diagnostics. Every finding
+must now fail, even when the scanner incorrectly exits zero.
 """
 
 from __future__ import annotations
@@ -30,7 +30,7 @@ REPO = Path(__file__).resolve().parents[1]
 # its .mod requires Go 1.26.0. lintcmd/cmd.go shows shared exit code 1.
 INSTALL = "honnef.co/go/tools/cmd/staticcheck@v0.8.1"
 GOVULN_INSTALL = "golang.org/x/vuln/cmd/govulncheck@v1.3.0"
-LEASE_HELPER = "scripts/check-staticcheck-phase2.py"
+STRICT_HELPER = "scripts/check-staticcheck-phase2.py"
 # Captured from the installed v0.8.1 tool on 8e559980, not invented findings.
 # Only the checkout's absolute prefix was removed from location/end.file.
 KNOWN_DIAGNOSTICS = (
@@ -302,7 +302,7 @@ class CIStaticcheckTests(unittest.TestCase):
             self.assertNotRegex(source, r"\|\|\s*(?:true\b|:(?:\s|$)|exit\s+0\b)",
                                 "a blanket bypass cannot distinguish lint from tool failures")
             self.assertNotRegex(source, r"(?:api\.github\.com|gh\s+(?:api|issue)|secrets\.)",
-                                "a warning lease must expire locally without tracker queries/secrets")
+                                "strict checks must run locally without tracker queries/secrets")
 
     def test_existing_govuln_browser_gate_order_and_job_metadata_are_preserved(self) -> None:
         # Make this an acceptance test for the addition, not an unrelated green test.
@@ -425,7 +425,7 @@ class StaticcheckFixtureTests(unittest.TestCase):
         self.assertEqual(calls, [])
 
 
-class StaticcheckLeaseFixtureTests(unittest.TestCase):
+class StaticcheckCapturedFixtureTests(unittest.TestCase):
     def test_fake_scanner_reproduces_real_json_and_shared_exit_one(self) -> None:
         fixture = CIStaticcheckTests()
         block = "name: Raw captured scan\n        run: staticcheck -f json ./...\n"
@@ -445,7 +445,7 @@ class StaticcheckLeaseFixtureTests(unittest.TestCase):
         self.assertIn("tool failed", output)
 
 
-class CIStaticcheckWarningLeaseTests(unittest.TestCase):
+class CIStaticcheckStrictPolicyTests(unittest.TestCase):
     def setUp(self) -> None:
         self.fixture = CIStaticcheckTests()
         self.fixture.setUp()
@@ -454,10 +454,10 @@ class CIStaticcheckWarningLeaseTests(unittest.TestCase):
         # Fail first for missing CI wiring, not a failed attempt to import a helper.
         selected = self.fixture.selected()
         commands = "\n".join(field(step, "run", 8) or "" for step in selected)
-        self.assertIn(LEASE_HELPER, script_paths(commands),
-                      "CI must invoke the bounded Phase 2 warning helper")
-        self.assertTrue((REPO / LEASE_HELPER).is_file(),
-                        "required warning-lease API is missing: " + LEASE_HELPER)
+        self.assertIn(STRICT_HELPER, script_paths(commands),
+                      "CI must invoke the strict Phase 2 Staticcheck helper")
+        self.assertTrue((REPO / STRICT_HELPER).is_file(),
+                        "required strict-scanner API is missing: " + STRICT_HELPER)
         return selected
 
     def assert_scan(self, calls: list[dict], output: str) -> None:
@@ -465,7 +465,7 @@ class CIStaticcheckWarningLeaseTests(unittest.TestCase):
                     and call["args"] == ["install", INSTALL]]
         scans = [call for call in calls if call["tool"] == "staticcheck"]
         helpers = [call for call in calls if call["tool"] == "python3"
-                   and call["args"][:1] == [LEASE_HELPER]]
+                   and call["args"][:1] == [STRICT_HELPER]]
         self.assertEqual(len(installs), 1, output)
         self.assertEqual(len(helpers), 1, "execute the helper, do not merely mention it: " + output)
         self.assertEqual(len(helpers[0]["args"]), 2,
@@ -483,7 +483,7 @@ class CIStaticcheckWarningLeaseTests(unittest.TestCase):
         self.assertEqual(Path(scans[0]["executable"]), supplied,
                          "helper must run its supplied freshly installed scanner")
 
-    def test_exact_four_real_findings_warn_and_pass_required_step(self) -> None:
+    def test_exact_four_former_exceptions_fail_required_step_in_either_order(self) -> None:
         selected = self.selected()
         for stdout in (known_scan_output(),
                        "".join(reversed(known_scan_output().splitlines(keepends=True)))):
@@ -492,25 +492,22 @@ class CIStaticcheckWarningLeaseTests(unittest.TestCase):
                     selected, scan_status=1, stdout=stdout,
                 )
                 self.assert_scan(calls, output)
-                self.assertEqual(status, 0, "only this exact known set may warn: " + output)
-                self.assertRegex(output.lower(), r"warning")
-                self.assertRegex(output, r"#?172\b", "warning must name the cleanup ticket")
+                self.assertNotEqual(status, 0, "the four former exceptions must now fail: " + output)
 
-    def test_helper_cli_itself_validates_the_captured_scan(self) -> None:
+    def test_helper_cli_itself_rejects_the_captured_scan(self) -> None:
         self.selected()
-        # This is a test command invoking the future production file, not a stub.
+        # Invoke the unchanged production CLI directly as well as through CI.
         block = ("name: Helper API\n        run: |\n"
                  "          export GOBIN=\"$(go env GOPATH)/bin\"\n"
                  "          go install " + INSTALL + "\n"
-                 "          python3 " + LEASE_HELPER + " \"$GOBIN/staticcheck\"\n")
+                 "          python3 " + STRICT_HELPER + " \"$GOBIN/staticcheck\"\n")
         status, calls, output = self.fixture.run_commands(
             [block], scan_status=1, stdout=known_scan_output(),
         )
         self.assert_scan(calls, output)
-        self.assertEqual(status, 0, output)
-        self.assertIn("warning", output.lower())
+        self.assertNotEqual(status, 0, "direct helper invocation must reject former exceptions: " + output)
 
-    def test_removing_any_known_finding_expires_the_lease(self) -> None:
+    def test_partial_cleanup_still_fails_on_remaining_findings(self) -> None:
         selected = self.selected()
         lines = known_scan_output().splitlines(keepends=True)
         for index in range(4):
@@ -519,12 +516,12 @@ class CIStaticcheckWarningLeaseTests(unittest.TestCase):
                     selected, scan_status=1, stdout="".join(lines[:index] + lines[index + 1:]),
                 )
                 self.assert_scan(calls, output)
-                self.assertNotEqual(status, 0, "partially fixed lease must be removed/updated: " + output)
+                self.assertNotEqual(status, 0, "remaining findings must fail after partial cleanup: " + output)
 
-    def test_clean_scan_expires_the_lease_instead_of_becoming_permanent_green(self) -> None:
+    def test_clean_zero_exit_with_empty_stdout_and_stderr_passes(self) -> None:
         status, calls, output = self.fixture.run_commands(self.selected(), scan_status=0)
         self.assert_scan(calls, output)
-        self.assertNotEqual(status, 0, "clean scan must force #172 to remove this exception: " + output)
+        self.assertEqual(status, 0, "a clean scan must pass after retiring the exception: " + output)
 
     def test_extra_unknown_duplicate_compile_or_config_findings_fail_closed(self) -> None:
         selected = self.selected()
@@ -541,7 +538,7 @@ class CIStaticcheckWarningLeaseTests(unittest.TestCase):
             stdout="".join(json.dumps(item) + "\n" for item in related),
         )
         self.assert_scan(calls, output)
-        self.assertNotEqual(status, 0, "new related diagnostics are not leased: " + output)
+        self.assertNotEqual(status, 0, "related diagnostics must fail: " + output)
         for extra in extras:
             with self.subTest(extra=extra):
                 status, calls, output = self.fixture.run_commands(
@@ -549,7 +546,7 @@ class CIStaticcheckWarningLeaseTests(unittest.TestCase):
                     stdout=known_scan_output() + json.dumps(extra) + "\n",
                 )
                 self.assert_scan(calls, output)
-                self.assertNotEqual(status, 0, "only the exact four-item set is leased: " + output)
+                self.assertNotEqual(status, 0, "extra findings must fail: " + output)
 
     def test_exact_codes_messages_severity_and_locations_cannot_be_normalized_away(self) -> None:
         selected = self.selected()
@@ -572,7 +569,7 @@ class CIStaticcheckWarningLeaseTests(unittest.TestCase):
                     stdout="".join(json.dumps(item) + "\n" for item in diagnostics),
                 )
                 self.assert_scan(calls, output)
-                self.assertNotEqual(status, 0, "changed finding must not match the lease: " + output)
+                self.assertNotEqual(status, 0, "changed findings must still fail: " + output)
         # ST1005 has a real nonempty end position, which must also match exactly.
         for key, value in (("file", "internal/config/config.go"), ("line", 26), ("column", 67)):
             with self.subTest(st1005_end=key):
@@ -614,6 +611,49 @@ class CIStaticcheckWarningLeaseTests(unittest.TestCase):
                 )
                 self.assert_scan(calls, output)
                 self.assertNotEqual(status, 0, "known JSON cannot excuse tool failure: " + output)
+
+    def test_zero_exit_with_any_stdout_fails_even_without_stderr(self) -> None:
+        selected = self.selected()
+        for stdout in (known_scan_output(), "not JSON\n", "{}\n", "[]\n", "null\n",
+                       "42\n", "\n", " \t\n"):
+            with self.subTest(stdout=stdout):
+                status, calls, output = self.fixture.run_commands(
+                    selected, scan_status=0, stdout=stdout,
+                )
+                self.assert_scan(calls, output)
+                self.assertNotEqual(status, 0, "zero exit cannot excuse nonempty stdout: " + output)
+        for category in ("SA1019", "U1000", "ST1005", "compile", "config"):
+            with self.subTest(category=category):
+                status, calls, output = self.fixture.run_commands(
+                    selected, scan_status=0, categories=(category,),
+                )
+                self.assert_scan(calls, output)
+                self.assertNotEqual(status, 0, "zero exit cannot excuse unknown diagnostics: " + output)
+
+    def test_any_stderr_fails_even_for_zero_exit_and_empty_stdout(self) -> None:
+        selected = self.selected()
+        for code in (0, 1):
+            for stdout in ("", known_scan_output()):
+                for stderr in ("cache initialization failed", "invalid staticcheck.conf", " ", "\t", "\n"):
+                    with self.subTest(code=code, stdout=stdout, stderr=stderr):
+                        status, calls, output = self.fixture.run_commands(
+                            selected, scan_status=code, stdout=stdout, stderr=stderr,
+                        )
+                        self.assert_scan(calls, output)
+                        self.assertNotEqual(status, 0, "any stderr must fail: " + output)
+
+    def test_helper_rejects_invalid_cli_and_never_falls_back_to_path(self) -> None:
+        self.selected()
+        for argument in ("", "staticcheck", "/missing/govulncheck", "/missing/staticcheck",
+                         "/missing/staticcheck extra"):
+            with self.subTest(argument=argument):
+                status, calls, output = self.fixture.run_commands([
+                    "name: Invalid helper CLI\n        run: python3 " + STRICT_HELPER + " " + argument + "\n",
+                ])
+                self.assertNotEqual(status, 0, "invalid/missing supplied scanner must fail: " + output)
+                self.assertTrue(any(call["tool"] == "python3" for call in calls), output)
+                self.assertFalse(any(call["tool"] == "staticcheck" for call in calls),
+                                 "a missing supplied scanner must not run PATH's stale tool")
 
     def test_install_failure_cannot_accept_known_json_from_a_stale_binary(self) -> None:
         status, calls, output = self.fixture.run_commands(

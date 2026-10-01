@@ -404,10 +404,6 @@ func invalidUTF8Offset(data []byte) int {
 	return -1
 }
 
-func isJSONSpace(value byte) bool {
-	return value == ' ' || value == '\t' || value == '\r' || value == '\n'
-}
-
 func unpairedSurrogateOffset(data []byte) int {
 	inString := false
 	for i := 0; i < len(data); i++ {

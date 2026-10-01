@@ -30,7 +30,6 @@ var adminTemplates embed.FS
 
 var pageListTemplate = template.Must(template.ParseFS(adminTemplates, "admin_list.html"))
 var pageFormTemplate = template.Must(template.ParseFS(adminTemplates, "admin_form.html"))
-var savedPageTemplate = template.Must(template.ParseFS(adminTemplates, "admin_saved.html"))
 
 type formField struct {
 	ID, Kind, Label, HelpText, Value, TextareaValue string

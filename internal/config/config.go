@@ -44,14 +44,6 @@ func Decode(data []byte) (Document, error) {
 	return document, err
 }
 
-func integer(raw []byte) (*big.Int, bool) {
-	var number json.Number
-	if err := json.Unmarshal(raw, &number); err != nil {
-		return nil, false
-	}
-	return integerNumber(number)
-}
-
 func integerNumber(number json.Number) (*big.Int, bool) {
 	text := string(number)
 	if text == "" {
