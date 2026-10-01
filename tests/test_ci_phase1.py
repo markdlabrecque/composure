@@ -19,12 +19,14 @@ REPO = Path(__file__).resolve().parents[1]
 PROBE = "COMPOSURE_BROWSER_FAILURE_PROBE"
 EXPRESSION = "${{ github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'ci-failure-probe') && '1' || '0' }}"
 PINNED_SCANNER = r"golang\.org/x/vuln/cmd/govulncheck@v\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?"
+PINNED_STATICCHECK = r"honnef\.co/go/tools/cmd/staticcheck@v0\.8\.1"
 
 
 def scanner_go_arguments(arguments):
     return arguments == ["env", "GOPATH"] or (
         len(arguments) == 2 and arguments[0] == "install"
-        and re.fullmatch(PINNED_SCANNER, arguments[1]) is not None
+        and any(re.fullmatch(pin, arguments[1]) is not None
+                for pin in (PINNED_SCANNER, PINNED_STATICCHECK))
     )
 
 
@@ -106,6 +108,8 @@ class CIPhase1Tests(unittest.TestCase):
         self.assertEqual(len(re.findall(r"^  \w+:$", source.split("jobs:\n", 1)[1], re.MULTILINE)), 1)
 
     def test_workflow_commands_propagate_browser_probe_and_failure(self):
+        from test_ci_staticcheck import LEASE_HELPER, known_scan_output
+
         _, steps = workflow_steps()
         with tempfile.TemporaryDirectory(prefix="composure CI fixture ") as directory:
             root = Path(directory)
@@ -113,6 +117,10 @@ class CIPhase1Tests(unittest.TestCase):
             (root / ".venv-browser/bin").mkdir(parents=True)
             (root / "go.mod").write_text("module example.test/ci\n")
             (root / "scripts/test-phase1").write_bytes((REPO / "scripts/test-phase1").read_bytes())
+            if any(LEASE_HELPER in command for command, _ in steps):
+                helper = REPO / LEASE_HELPER
+                self.assertTrue(helper.is_file(), "missing workflow helper: " + LEASE_HELPER)
+                (root / LEASE_HELPER).write_bytes(helper.read_bytes())
             log = root / "calls"
             tools = root / "tools"
             tools.mkdir()
@@ -129,10 +137,10 @@ class CIPhase1Tests(unittest.TestCase):
                 name = Path(sys.argv[0]).name
                 args = sys.argv[1:]
                 if name == "go":
-                    pinned = os.environ["PINNED_SCANNER"]
+                    pins = (os.environ["PINNED_SCANNER"], os.environ["PINNED_STATICCHECK"])
                     if args != ["env", "GOPATH"] and not (
                         len(args) == 2 and args[0] == "install"
-                        and re.fullmatch(pinned, args[1])
+                        and any(re.fullmatch(pin, args[1]) for pin in pins)
                     ):
                         raise SystemExit("unexpected direct Go invocation: " + repr(args))
                     with open(os.environ["CALL_LOG"], "a") as log:
@@ -140,17 +148,26 @@ class CIPhase1Tests(unittest.TestCase):
                     if args == ["env", "GOPATH"]:
                         print(os.environ["GOPATH"])
                     else:
-                        target = Path(os.environ["GOPATH"]) / "bin/govulncheck"
+                        scanner = "staticcheck" if re.fullmatch(pins[1], args[1]) else "govulncheck"
+                        target = Path(os.environ["GOPATH"]) / "bin" / scanner
                         target.parent.mkdir(parents=True, exist_ok=True)
-                        shutil.copyfile(Path(sys.argv[0]).with_name("govulncheck"), target)
+                        shutil.copyfile(Path(sys.argv[0]).with_name(scanner), target)
                         target.chmod(0o755)
                 else:
-                    if args != ["./..."]:
+                    allowed = [["./..."]]
+                    if name == "staticcheck":
+                        allowed += [["-f", "json", "./..."], ["-f=json", "./..."]]
+                    if args not in allowed:
                         raise SystemExit("unexpected scanner invocation: " + repr(args))
                     with open(os.environ["CALL_LOG"], "a") as log:
-                        log.write("scanner:./...\\n")
+                        prefix = "staticcheck" if name == "staticcheck" else "scanner"
+                        log.write(prefix + ":./...\\n")
+                    if name == "staticcheck" and args != ["./..."]:
+                        # A clean scan expires the lease. Reproduce its exact real premise.
+                        print(os.environ["STATICCHECK_JSON"], end="")
+                        raise SystemExit(1)
                 ''')
-            for name in ("go", "govulncheck"):
+            for name in ("go", "govulncheck", "staticcheck"):
                 path = tools / name
                 path.write_text(fake)
                 path.chmod(0o755)
@@ -173,6 +190,10 @@ class CIPhase1Tests(unittest.TestCase):
                 "fake scanner on PATH": [(install + "\ngovulncheck ./...", {})] + steps,
                 "fake installed scanner": [(install, {}),
                                            ('"$(go env GOPATH)/bin/govulncheck" ./...', {})] + steps,
+                "fake installed staticcheck": [
+                    ("go install honnef.co/go/tools/cmd/staticcheck@v0.8.1", {}),
+                    ('"$(go env GOPATH)/bin/staticcheck" ./...', {}),
+                ] + steps,
             }
             for variant, commands in variants.items():
                 for probe in ("0", "1"):
@@ -184,6 +205,8 @@ class CIPhase1Tests(unittest.TestCase):
                                 continue
                             env = {"PATH": str(tools), "HOME": str(root),
                                    "GOPATH": str(root / "go"), "PINNED_SCANNER": PINNED_SCANNER,
+                                   "PINNED_STATICCHECK": PINNED_STATICCHECK,
+                                   "STATICCHECK_JSON": known_scan_output(str(root) + "/"),
                                    "CALL_LOG": str(log), PROBE: "0", "COMPOSURE_CI_FAILURE_PROBE": "0"}
                             for key, value in environment.items():
                                 # Exact expression semantics are checked separately above.
@@ -200,14 +223,17 @@ class CIPhase1Tests(unittest.TestCase):
                         for call in calls:
                             if call.startswith("scanner-go:"):
                                 self.assertTrue(scanner_go_arguments(shlex.split(call.partition(":")[2])), call)
-                            elif call == "scanner:./...":
+                            elif call in ("scanner:./...", "staticcheck:./..."):
                                 continue
                             else:
                                 core.append(call)
                         self.assertEqual(core, [
                             "install", "deps:-m playwright install-deps chromium", "go:0", "browser:" + probe,
                         ])
-                        if variant != "workflow":
+                        if variant == "fake installed staticcheck":
+                            self.assertIn("scanner-go:install honnef.co/go/tools/cmd/staticcheck@v0.8.1", calls)
+                            self.assertIn("staticcheck:./...", calls)
+                        elif variant != "workflow":
                             self.assertIn("scanner-go:" + install.removeprefix("go "), calls)
                             self.assertIn("scanner:./...", calls)
 
@@ -215,6 +241,8 @@ class CIPhase1Tests(unittest.TestCase):
             for arguments in (["test", "./..."], ["test", "-race", "./..."],
                               ["build", "./..."], ["vet", "./..."], ["env", "GOBIN"],
                               ["install", "golang.org/x/vuln/cmd/govulncheck@latest"],
+                              ["install", "honnef.co/go/tools/cmd/staticcheck@latest"],
+                              ["install", "honnef.co/go/tools/cmd/staticcheck@v0.8.0"],
                               ["install", "example.test/tool@v1.2.3"]):
                 with self.subTest(forbidden_go=arguments):
                     self.assertFalse(scanner_go_arguments(arguments))
