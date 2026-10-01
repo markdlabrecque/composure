@@ -46,6 +46,24 @@ type AdminSetup struct {
 	Email, Password string
 }
 
+func canonicalAdminEmail(email string) string {
+	canonical := []byte(email)
+	start, end := 0, len(canonical)
+	for start < end && canonical[start] == ' ' {
+		start++
+	}
+	for end > start && canonical[end-1] == ' ' {
+		end--
+	}
+	canonical = canonical[start:end]
+	for i, char := range canonical {
+		if char >= 'A' && char <= 'Z' {
+			canonical[i] = char + ('a' - 'A')
+		}
+	}
+	return string(canonical)
+}
+
 // InitWithAdmin preserves the legacy default configuration while creating the
 // first administrator as part of a real apply.
 func InitWithAdmin(ctx context.Context, dir string, example, apply bool, admin AdminSetup, out io.Writer, now func() time.Time) error {
@@ -64,8 +82,14 @@ func InitWithConfigAndAdmin(ctx context.Context, dir string, rawConfig []byte, e
 }
 
 func initWithConfig(ctx context.Context, dir string, rawConfig []byte, explicitConfig, example, apply bool, out io.Writer, now func() time.Time, admin *AdminSetup) (err error) {
-	if admin != nil && admin.Password == "" {
-		return state(3, "COMPOSURE_ADMIN_PASSWORD must be set and non-empty when --admin-email is supplied")
+	if admin != nil {
+		admin.Email = canonicalAdminEmail(admin.Email)
+		if admin.Email == "" {
+			return state(3, "administrator email must be non-empty after canonicalization")
+		}
+		if admin.Password == "" {
+			return state(3, "COMPOSURE_ADMIN_PASSWORD must be set and non-empty when --admin-email is supplied")
+		}
 	}
 	document, err := config.Validate(rawConfig)
 	if err != nil {
