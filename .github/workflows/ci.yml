@@ -36,6 +36,12 @@ jobs:
           go install golang.org/x/vuln/cmd/govulncheck@v1.3.0
           "$GOBIN/govulncheck" ./...
 
+      - name: Check Staticcheck
+        run: |
+          export GOBIN="$(go env GOPATH)/bin"
+          go install honnef.co/go/tools/cmd/staticcheck@v0.8.1
+          python3 scripts/check-staticcheck-phase2.py "$GOBIN/staticcheck"
+
       - name: Install pinned browser tests
         run: bash scripts/install-browser-tests
 
