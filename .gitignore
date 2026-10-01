@@ -10,3 +10,6 @@ benchmarks/*/review-packets/
 benchmarks/*/aliases.json
 benchmarks/*/report.md
 benchmarks/*/report.csv
+
+# Local Lavish artifacts
+.lavish/
