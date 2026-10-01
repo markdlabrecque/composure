@@ -1,0 +1,385 @@
+"""Required-job Staticcheck wiring, using isolated fake tools.
+
+Run: python3 -m unittest discover -s tests -p test_ci_staticcheck.py -v
+These tests do not establish a clean real Staticcheck result. A warning lease
+needs additional cases using the real pinned scan's declared known findings;
+synthetic diagnostics here are unknown findings, never lease entries.
+"""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+import re
+import shlex
+import shutil
+import subprocess
+import sys
+import tempfile
+import textwrap
+import unittest
+
+from test_ci_govulncheck import checks_job, field, steps
+
+
+REPO = Path(__file__).resolve().parents[1]
+# Verified primary sources, no network access from these tests:
+# https://github.com/dominikh/go-tools/releases/tag/2026.2.1
+# https://staticcheck.dev/changes/2026.2/ explicitly adds Go 1.27 support.
+# https://proxy.golang.org/honnef.co/go/tools/@v/v0.8.1.info maps the tag;
+# its .mod requires Go 1.26.0. lintcmd/cmd.go shows shared exit code 1.
+INSTALL = "honnef.co/go/tools/cmd/staticcheck@v0.8.1"
+GOVULN_INSTALL = "golang.org/x/vuln/cmd/govulncheck@v1.3.0"
+
+
+def script_paths(command: str) -> list[str]:
+    """Recognize repository shell helpers without imposing a helper filename."""
+    return re.findall(r"\bscripts/[\w./-]+", command)
+
+
+def scanner_steps(job: str) -> list[str]:
+    selected = []
+    for step in steps(job):
+        command = field(step, "run", 8) or ""
+        helpers = [REPO / name for name in script_paths(command)]
+        if re.search(r"\bstaticcheck\b", command) or any(
+            path.is_file() and re.search(r"\bstaticcheck\b", path.read_text())
+            for path in helpers
+        ):
+            selected.append(step)
+    return selected
+
+
+class CIStaticcheckTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.source = (REPO / ".github/workflows/ci.yml").read_text()
+        self.job = checks_job(self.source)
+        self.steps = steps(self.job)
+
+    def selected(self) -> list[str]:
+        selected = scanner_steps(self.job)
+        self.assertTrue(selected,
+                        "required jobs.checks has no executable staticcheck run step")
+        return selected
+
+    def run_commands(self, selected: list[str], *, scan_status: int = 0,
+                     install_status: int = 0, categories: tuple[str, ...] = (),
+                     stderr: str = "") -> tuple[int, list[dict], str]:
+        """Run actual workflow shell/helper text, never real Go or a real scanner.
+
+        JSON diagnostics match lintcmd/format.go at official tag 2026.2.1.
+        Exit 1 alone does NOT distinguish lint, compile, config or runtime errors.
+        """
+        with tempfile.TemporaryDirectory(prefix="composure staticcheck fixture ") as directory:
+            root = Path(directory)
+            tools = root / "tools"
+            tools.mkdir()
+            (root / "tmp").mkdir()
+            (root / "go.mod").write_bytes((REPO / "go.mod").read_bytes())
+            log = root / "calls.jsonl"
+            fake = "#!" + sys.executable + "\n" + textwrap.dedent('''\
+                import json
+                import os
+                from pathlib import Path
+                import shutil
+                import sys
+
+                name = Path(sys.argv[0]).name
+                args = sys.argv[1:]
+                with open(os.environ["CALL_LOG"], "a") as log:
+                    log.write(json.dumps({"tool": name, "args": args,
+                                          "cwd": os.getcwd()}) + "\\n")
+                if name == "go":
+                    if args == ["env", "GOPATH"]:
+                        print(os.environ["GOPATH"])
+                    elif len(args) == 2 and args[0] == "install" and args[1] in (
+                            os.environ["STATICCHECK_INSTALL"], os.environ["GOVULN_INSTALL"]):
+                        scanner = "staticcheck" if args[1] == os.environ["STATICCHECK_INSTALL"] else "govulncheck"
+                        status = int(os.environ["INSTALL_STATUS"]) if scanner == "staticcheck" else 0
+                        if status:
+                            print("fixture tool installation failed", file=sys.stderr)
+                            raise SystemExit(status)
+                        target = Path(os.environ.get("GOBIN") or os.environ["GOPATH"] + "/bin") / scanner
+                        target.parent.mkdir(parents=True, exist_ok=True)
+                        shutil.copyfile(Path(sys.argv[0]).with_name(scanner), target)
+                        target.chmod(0o755)
+                    else:
+                        print("unexpected direct Go invocation: " + repr(args), file=sys.stderr)
+                        raise SystemExit(91)
+                elif name == "govulncheck":
+                    if args != ["./..."]:
+                        raise SystemExit(92)
+                else:
+                    if args not in (["./..."], ["-f", "json", "./..."], ["-f=json", "./..."]):
+                        print("unexpected scanner invocation: " + repr(args), file=sys.stderr)
+                        raise SystemExit(93)
+                    for category in json.loads(os.environ["CATEGORIES"]):
+                        message = "fixture-only unexpected diagnostic"
+                        location = {"file": "fixture/unknown.go", "line": 7, "column": 2}
+                        if "json" in args or "-f=json" in args:
+                            print(json.dumps({"code": category, "severity": "error",
+                                              "location": location, "end": location,
+                                              "message": message}))
+                        else:
+                            print("fixture/unknown.go:7:2: " + message + " (" + category + ")")
+                    if os.environ["SCAN_STDERR"]:
+                        print(os.environ["SCAN_STDERR"], file=sys.stderr)
+                    raise SystemExit(int(os.environ["SCAN_STATUS"]))
+                ''')
+            for name in ("go", "staticcheck", "govulncheck"):
+                path = tools / name
+                path.write_text(fake)
+                path.chmod(0o755)
+            # Shell/stdlib helpers only. No real Go, scanners, curl, git or gh.
+            for name in ("bash", "tee", "mkdir", "chmod", "mktemp", "rm", "diff",
+                         "cmp", "sort", "grep", "awk", "cut", "cp", "dirname"):
+                executable = shutil.which(name)
+                if executable:
+                    (tools / name).symlink_to(executable)
+            (tools / "python3").symlink_to(sys.executable)
+            for step in selected:
+                for name in script_paths(field(step, "run", 8) or ""):
+                    source = REPO / name
+                    self.assertTrue(source.is_file(), "missing workflow helper: " + name)
+                    self.assertIn("staticcheck", source.read_text(),
+                                  "only the Staticcheck helper belongs in this fixture")
+                    target = root / name
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    target.write_bytes(source.read_bytes())
+                    target.chmod(0o755)
+            env = {
+                "PATH": str(tools), "HOME": str(root), "GOPATH": str(root / "go"),
+                "GOBIN": str(root / "go/bin"), "GOTOOLCHAIN": "local",
+                "GITHUB_WORKSPACE": str(root), "RUNNER_TEMP": str(root / "tmp"),
+                "CALL_LOG": str(log), "STATICCHECK_INSTALL": INSTALL,
+                "GOVULN_INSTALL": GOVULN_INSTALL, "SCAN_STATUS": str(scan_status),
+                "INSTALL_STATUS": str(install_status), "CATEGORIES": json.dumps(categories),
+                "SCAN_STDERR": stderr,
+            }
+            status = 0
+            output = []
+            for step in selected:
+                command = field(step, "run", 8)
+                self.assertIsNotNone(command)
+                self.assertNotIn("${{", command, "run expressions need explicit fixture support")
+                self.assertIn(field(step, "shell", 8), (None, "bash"))
+                self.assertIsNone(field(step, "working-directory", 8),
+                                  "Staticcheck must run from the repository root")
+                step_env = dict(env)
+                if field(step, "env", 8) is not None:
+                    environment = step.split("        env:", 1)[1]
+                    for line in environment.splitlines():
+                        if line.strip() and not line.startswith("          "):
+                            break
+                        if not line.strip():
+                            continue
+                        key, value = line.strip().split(":", 1)
+                        value = value.strip().strip("'\"")
+                        value = value.replace("${{ runner.temp }}", str(root / "tmp"))
+                        value = value.replace("${{ github.workspace }}", str(root))
+                        self.assertNotIn("${{", value)
+                        self.assertNotIn(key, ("PATH", "CALL_LOG", "SCAN_STATUS", "INSTALL_STATUS",
+                                              "CATEGORIES", "SCAN_STDERR", "STATICCHECK_INSTALL",
+                                              "GOVULN_INSTALL"), "do not bypass fixture isolation")
+                        if key in ("GOBIN", "GOPATH"):
+                            self.assertTrue(Path(value).is_relative_to(root))
+                        step_env[key] = value
+                result = subprocess.run(
+                    ["/bin/bash", "--noprofile", "--norc", "-e", "-o", "pipefail", "-c", command],
+                    cwd=root, env=step_env, capture_output=True, text=True, timeout=15,
+                )
+                output.append(result.stdout + result.stderr)
+                status = result.returncode
+                if status:
+                    break
+            calls = [json.loads(line) for line in log.read_text().splitlines()] if log.exists() else []
+            for call in calls:
+                self.assertEqual(call["cwd"], str(root), "tools must execute at module root")
+            return status, calls, "\n".join(output)
+
+    def test_scan_is_required_and_runs_after_repository_go_setup(self) -> None:
+        selected = self.selected()
+        self.assertEqual(field(self.job, "name", 4), "Composure checks")
+        for block, indent in [(self.job.split("    steps:\n", 1)[0], 4),
+                              *((step, 8) for step in selected)]:
+            self.assertIn(field(block, "continue-on-error", indent), (None, "false"))
+            self.assertIn(field(block, "if", indent), (None, "success()", "${{ success() }}"),
+                          "Staticcheck must not be an opt-in or optional check")
+        setup = [i for i, step in enumerate(self.steps)
+                 if (field(step, "uses", 8) or "").startswith("actions/setup-go@")]
+        self.assertEqual(len(setup), 1)
+        self.assertEqual(field(self.steps[setup[0]], "go-version-file", 10), "go.mod")
+        self.assertIsNone(field(self.steps[setup[0]], "go-version", 10))
+        for step in selected:
+            self.assertLess(setup[0], self.steps.index(step))
+
+    def test_exact_stable_install_precedes_executed_whole_repository_scan(self) -> None:
+        _, calls, output = self.run_commands(self.selected())
+        installs = [call for call in calls if call["tool"] == "go"
+                    and call["args"] == ["install", INSTALL]]
+        self.assertEqual(len(installs), 1, "install the verified Go 1.27-compatible pin: " + output)
+        scans = [call for call in calls if call["tool"] == "staticcheck"]
+        self.assertEqual(len(scans), 1, "echoing/installing the tool is not a scan: " + output)
+        self.assertIn(scans[0]["args"], (["./..."], ["-f", "json", "./..."], ["-f=json", "./..."]),
+                      "scan every package and its tests without disabling checks or errors")
+        self.assertLess(calls.index(installs[0]), calls.index(scans[0]))
+
+    def test_install_failure_does_not_run_stale_scanner(self) -> None:
+        status, calls, output = self.run_commands(self.selected(), install_status=23)
+        self.assertNotEqual(status, 0, "installation failure was hidden: " + output)
+        self.assertTrue(any(call["args"] == ["install", INSTALL] for call in calls), output)
+        self.assertFalse(any(call["tool"] == "staticcheck" for call in calls),
+                         "failed installation must not run a stale tool")
+
+    def test_tool_runtime_errors_fail_closed_including_exit_one(self) -> None:
+        selected = self.selected()
+        for code, stderr in ((1, "fixture cache initialization failed"),
+                             (1, ""), (2, "unsupported output format"),
+                             (17, "fixture runtime failure"), (127, "command not found")):
+            with self.subTest(code=code, stderr=stderr):
+                status, calls, output = self.run_commands(selected, scan_status=code, stderr=stderr)
+                self.assertTrue(any(call["tool"] == "staticcheck" for call in calls), output)
+                self.assertNotEqual(status, 0, "tool failure was treated as allowed lint: " + output)
+
+    def test_unknown_lint_compile_and_config_diagnostics_fail_closed(self) -> None:
+        selected = self.selected()
+        for categories, stderr in ((("SA1019",), ""), (("compile",), ""),
+                                   (("config",), ""), (("SA1019", "compile"), ""),
+                                   (("SA1019",), "fixture tool failure alongside diagnostics")):
+            with self.subTest(categories=categories, stderr=stderr):
+                status, calls, output = self.run_commands(
+                    selected, scan_status=1, categories=categories, stderr=stderr,
+                )
+                self.assertTrue(any(call["tool"] == "staticcheck" for call in calls), output)
+                self.assertNotEqual(status, 0, "unknown findings/tool errors were concealed: " + output)
+
+    def test_no_blanket_warning_bypass_or_live_issue_expiration(self) -> None:
+        selected = self.selected()
+        sources = [field(step, "run", 8) or "" for step in selected]
+        for command in list(sources):
+            sources.extend((REPO / name).read_text() for name in script_paths(command))
+        for source in sources:
+            self.assertNotRegex(source, r"\|\|\s*(?:true\b|:(?:\s|$)|exit\s+0\b)",
+                                "a blanket bypass cannot distinguish lint from tool failures")
+            self.assertNotRegex(source, r"(?:api\.github\.com|gh\s+(?:api|issue)|secrets\.)",
+                                "a warning lease must expire locally without tracker queries/secrets")
+
+    def test_existing_govuln_browser_gate_order_and_job_metadata_are_preserved(self) -> None:
+        # Make this an acceptance test for the addition, not an unrelated green test.
+        self.selected()
+        self.assertEqual(self.source.split("jobs:\n", 1)[0], """name: CI
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+""")
+        self.assertEqual(re.findall(r"^  [\w-]+:$", self.source.split("jobs:\n", 1)[1], re.MULTILINE),
+                         ["  checks:"])
+        self.assertEqual(self.job.split("    steps:\n", 1)[0],
+                         "    name: Composure checks\n    runs-on: ubuntu-latest\n    timeout-minutes: 15\n")
+        self.assertEqual(re.findall(r"uses: (\S+)", self.job), [
+            "actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+            "actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff",
+        ])
+        retained = [step for step in self.steps if step not in self.selected()]
+        self.assertEqual([field(step, "name", 0) for step in retained], [
+            "Check out source", "Set up Go from go.mod", "Check Go vulnerabilities",
+            "Install pinned browser tests", "Install Chromium system dependencies", "Run Phase 1 gate",
+        ])
+        vuln = retained[2]
+        self.assertEqual(field(vuln, "run", 8),
+                         'export GOBIN="$(go env GOPATH)/bin"\n'
+                         'go install ' + GOVULN_INSTALL + '\n"$GOBIN/govulncheck" ./...')
+        self.assertIn(field(vuln, "continue-on-error", 8), (None, "false"))
+        self.assertIn(field(vuln, "if", 8), (None, "success()", "${{ success() }}"))
+        self.assertEqual([field(step, "run", 8) for step in retained[3:]], [
+            "bash scripts/install-browser-tests",
+            ".venv-browser/bin/python -m playwright install-deps chromium",
+            "bash scripts/test-phase1",
+        ])
+        self.assertEqual(field(retained[-1], "COMPOSURE_CI_FAILURE_PROBE", 10), "0")
+        self.assertEqual(field(retained[-1], "COMPOSURE_BROWSER_FAILURE_PROBE", 10),
+                         "${{ github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'ci-failure-probe') && '1' || '0' }}")
+
+
+class StaticcheckFixtureTests(unittest.TestCase):
+    def test_fake_tools_model_success_shared_exit_one_and_install_failure(self) -> None:
+        fixture = CIStaticcheckTests()
+        block = """name: Fixture only
+        run: |
+          go install honnef.co/go/tools/cmd/staticcheck@v0.8.1
+          staticcheck -f json ./...
+"""
+        for scan_status, install_status, categories, stderr, expected in (
+            (0, 0, (), "", 0),
+            (1, 0, ("SA1019",), "", 1),
+            (1, 0, ("compile",), "", 1),
+            (1, 0, ("config",), "", 1),
+            (1, 0, (), "runtime error", 1),
+            (2, 0, (), "invalid format", 2),
+            (0, 23, (), "", 23),
+        ):
+            with self.subTest(scan_status=scan_status, categories=categories,
+                              install_status=install_status, stderr=stderr):
+                status, calls, output = fixture.run_commands(
+                    [block], scan_status=scan_status, install_status=install_status,
+                    categories=categories, stderr=stderr,
+                )
+                self.assertEqual(status, expected, output)
+                self.assertEqual([call["tool"] for call in calls],
+                                 ["go"] if install_status else ["go", "staticcheck"])
+                if categories:
+                    diagnostic = json.loads(output)
+                    self.assertEqual(diagnostic["code"], categories[0])
+                    self.assertEqual(diagnostic["location"]["file"], "fixture/unknown.go")
+        status, _, _ = fixture.run_commands(
+            [block.replace("staticcheck -f json ./...", "staticcheck -f json ./... || true")],
+            scan_status=1, categories=("compile",),
+        )
+        self.assertEqual(status, 0, "fixture must expose, not repair, swallowed failures")
+
+    def test_fake_go_rejects_suite_commands_mutable_and_unrelated_installs(self) -> None:
+        fixture = CIStaticcheckTests()
+        for args in (["test", "./..."], ["test", "-race", "./..."], ["build", "./..."],
+                     ["vet", "./..."], ["install", "honnef.co/go/tools/cmd/staticcheck@latest"],
+                     ["install", "example.test/tool@v1.2.3"]):
+            with self.subTest(args=args):
+                status, calls, output = fixture.run_commands([
+                    "name: Forbidden fixture command\n        run: go " + shlex.join(args) + "\n",
+                ])
+                self.assertEqual(status, 91, output)
+                self.assertEqual(calls[0]["args"], args)
+                self.assertIn("unexpected direct Go invocation", output)
+
+    def test_optional_job_comment_or_echo_cannot_satisfy_executed_scan(self) -> None:
+        source = """jobs:
+  checks:
+    name: Composure checks
+    steps:
+      - name: Comment
+        # staticcheck ./... is not executed
+        run: echo ordinary-checks
+  optional:
+    steps:
+      - name: Lint
+        run: staticcheck ./...
+"""
+        self.assertEqual(scanner_steps(checks_job(source)), [])
+        fixture = CIStaticcheckTests()
+        status, calls, _ = fixture.run_commands([
+            "name: Echo only\n        run: echo staticcheck ./...\n",
+        ])
+        self.assertEqual(status, 0)
+        self.assertEqual(calls, [])
