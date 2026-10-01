@@ -477,14 +477,21 @@ func TestSessionMiddlewareCookieHelpersOverTLS(t *testing.T) {
 	if get("/test-read").Header.Get("X-Test-Authenticated") != "yes" {
 		t.Fatal("Secure cookie did not authenticate over local TLS")
 	}
-	httpURL, err := url.Parse(server.URL)
+	// Go's cookiejar treats localhost and loopback as secure even over HTTP.
+	// Check a non-loopback host using only jar operations, without DNS or network.
+	isolatedJar, err := cookiejar.New(nil)
 	if err != nil {
 		t.Fatal(err)
 	}
+	httpURL, err := url.Parse("https://cookie.example.test/test-read")
+	if err != nil {
+		t.Fatal(err)
+	}
+	isolatedJar.SetCookies(httpURL, cookies)
 	httpURL.Scheme = "http"
-	for _, cookie := range jar.Cookies(httpURL) {
+	for _, cookie := range isolatedJar.Cookies(httpURL) {
 		if cookie.Name == sessionCookieNameForTest {
-			t.Fatal("local cookie policy weakened Secure for HTTP")
+			t.Fatal("Secure session cookie was available over non-loopback HTTP")
 		}
 	}
 	cleared := get("/test-clear")
