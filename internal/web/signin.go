@@ -118,10 +118,11 @@ func serveSignInPost(w http.ResponseWriter, r *http.Request, repository content.
 		writeSignInCSRFError(w)
 		return
 	}
+	retryToken := preAuthToken(rawNonce)
 
 	emails, passwords := form["email"], form["password"]
 	if len(emails) != 1 || len(passwords) != 1 || emails[0] == "" || passwords[0] == "" {
-		writeSignInPage(w, http.StatusUnauthorized, signInPageData{Error: true})
+		writeSignInPage(w, http.StatusUnauthorized, signInPageData{Token: retryToken, Error: true})
 		return
 	}
 	repo, ok := repository.(signInRepository)
@@ -130,17 +131,22 @@ func serveSignInPost(w http.ResponseWriter, r *http.Request, repository content.
 		return
 	}
 	account, lookupErr := repo.GetAccountByEmail(r.Context(), canonicalSignInEmail(emails[0]))
-	verified := false
-	if lookupErr == nil {
-		verified, err = auth.Verify(passwords[0], account.PasswordHash)
-		if err != nil {
-			verified, _ = auth.Verify(passwords[0], signInDummyPasswordHash)
-		}
-	} else {
+	if errors.Is(lookupErr, content.ErrNotFound) {
+		_, _ = auth.Verify(passwords[0], signInDummyPasswordHash)
+		writeSignInPage(w, http.StatusUnauthorized, signInPageData{Token: retryToken, Error: true})
+		return
+	}
+	if lookupErr != nil {
+		_, _ = auth.Verify(passwords[0], signInDummyPasswordHash)
+		writeSignInPage(w, http.StatusUnauthorized, signInPageData{Error: true})
+		return
+	}
+	verified, verifyErr := auth.Verify(passwords[0], account.PasswordHash)
+	if verifyErr != nil {
 		verified, _ = auth.Verify(passwords[0], signInDummyPasswordHash)
 	}
-	if lookupErr != nil || !verified || account.State != "active" {
-		writeSignInPage(w, http.StatusUnauthorized, signInPageData{Error: true})
+	if !verified || account.State != "active" {
+		writeSignInPage(w, http.StatusUnauthorized, signInPageData{Token: retryToken, Error: true})
 		return
 	}
 
