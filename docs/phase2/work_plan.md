@@ -1,12 +1,12 @@
 # Phase 2 work plan: parallel lanes
 
-Status: written 2026-09-30 from `docs/phase2/tickets.md` and GitHub issues #58 to #176 in the Phase 2 milestone.
+Status: written 2026-09-30 from `docs/phase2/tickets.md` and GitHub issues #58 to #176 in the Phase 2 milestone. Scope decision: Phase 2 is development-only; use the Debian-based Docker harness for automated deployment/security checks. No real sites exist and no existing-site upgrades are required. Human security signoff and real Hetzner evidence are deferred beyond Phase 2; the harness is not approval or host evidence, and production remains blocked pending those release requirements.
 
 ## How to read this
 
 - A **lane** is a set of tickets that touch the same files. Tickets inside a lane run one after another. Different lanes can run at the same time.
 - A **wave** is the earliest point a ticket can start, counting both its stated dependencies and its place in its lane. Everything in one wave can run in parallel, and each ticket may start as soon as its own prerequisites are merged, without waiting for the rest of its wave.
-- The longest chain is 28 waves. That is the floor on wall-clock time no matter how many agents run.
+- The critical dependency chain has 27 ticket steps and reaches wave 28; it skips wave 17, which has no ticket on this chain. The 28 numbered waves are therefore the earliest finish wave, not a count of tickets on the chain.
 - Each ticket still follows the dispatch, review, merge and closure rules in `docs/work_plan.md`. A ticket starts only when its prerequisites are merged and closed.
 
 ## Rules that keep lanes from colliding
@@ -55,10 +55,10 @@ Status: written 2026-09-30 from `docs/phase2/tickets.md` and GitHub issues #58 t
 | Web shell | `internal/web/layout.html`, existing `admin_*.html`, error partials | #122 → #123 → #124 → #125 → #128 → #129 |
 | Web settings and audit screens | `internal/web/settings.go`, `internal/web/audit.go`, their templates | #127 → #135 |
 | Web media | `internal/web/media.go`, `admin_form.html` image field, `internal/render/page.html` | #147 → #148 → #151 → #152 → #153 → #154 → #155 |
-| Human review: auth | none (findings become new tickets) | #156 |
-| Human review: roles | none (findings become new tickets) | #157 |
-| Human review: uploads | none (findings become new tickets) | #158 |
-| Deploy | `deploy/`, `docs/phase2/deploy.md`, `docs/phase2/evidence/` | #159 → #160 → #161 → #162 → #163 → #164 → #165 → #166 → #167 → #168 → #169 |
+| Deferred human signoff: auth | none (findings become new tickets) | #156; held beyond Phase 2 |
+| Deferred human signoff: roles | none (findings become new tickets) | #157; held beyond Phase 2 |
+| Deferred human signoff: uploads | none (findings become new tickets) | #158; held beyond Phase 2 |
+| Deploy controls (Debian Docker harness) | `deploy/`, `docs/phase2/deploy.md`, `docs/phase2/evidence/` | #159 → #160 → #161 → #162 → #163 → #164 → #165 → #166 → #167 → #168 → #169; automated checks only in Phase 2, no real-host deployment or measurements |
 | CI | `.github/workflows/ci.yml`, `go.mod` | #170 → #171 → #172 → #173 → #174 → #175 → #176 |
 
 ## Waves
@@ -169,12 +169,9 @@ Status: written 2026-09-30 from `docs/phase2/tickets.md` and GitHub issues #58 t
 | 16 | Web media | #155 | P2-59 Render the image on the published Page | Luna | #153, #154 (lane) |
 | 17 | Web accounts | #120 | P2-40c Audit event on deactivation | Luna | #118, #119 (lane) |
 | 17 | Web shell | #129 | P2-44b Shared page-level error partial | Luna | #122, #128 (lane) |
-| 17 | Human review: uploads | #158 | P2-60c Security review: uploads | Sol | #155 |
 | 18 | Web settings and audit screens | #135 | P2-48b Audit log screen | Luna | #120, #128, #134, #127 (lane) |
-| 18 | Deploy | #159 | P2-61 systemd unit template | Luna | #158 |
-| 19 | Human review: auth | #156 | P2-60a Security review: authentication, sessions and CSRF | Sol | #135 |
-| 19 | Human review: roles | #157 | P2-60b Security review: roles and account management | Sol | #135 |
-| 19 | Deploy | #160 | P2-62 Caddy and TLS template | Luna | #159 |
+| 18 | Deploy controls | #159 | P2-61 systemd unit template | Luna | #155 and independent automated auth/roles/uploads checks |
+| 19 | Deploy controls | #160 | P2-62 Caddy and TLS template | Luna | #159 |
 | 20 | Deploy | #161 | P2-63 IP allowlist in the Caddy template | Luna | #160 |
 | 21 | Deploy | #162 | P2-64a Deployment runbook | Luna | #161 |
 | 22 | Deploy | #163 | P2-64b Record host size and page mix | Luna | #162 |
@@ -187,9 +184,9 @@ Status: written 2026-09-30 from `docs/phase2/tickets.md` and GitHub issues #58 t
 
 ## Critical path
 
-The longest chain, one ticket per wave. Keep these moving first; everything else has slack.
+The critical dependency chain has 27 ticket steps across wave numbers 1–16 and 18–28. Keep these moving first; everything else has slack. #159 also requires the independent automated auth, roles and uploads checks listed in its wave dependency; those checks are gates, not additional tickets on this chain.
 
-#62 (P2-03) → #70 (P2-09) → #73 (P2-12) → #74 (P2-13) → #75 (P2-14) → #81 (P2-20a) → #82 (P2-20b) → #83 (P2-21) → #84 (P2-22) → #107 (P2-36a) → #108 (P2-36b) → #151 (P2-58a) → #152 (P2-58b) → #153 (P2-58c) → #154 (P2-58d) → #155 (P2-59) → #158 (P2-60c) → #159 (P2-61) → #160 (P2-62) → #161 (P2-63) → #162 (P2-64a) → #163 (P2-64b) → #164 (P2-64c) → #165 (P2-64d) → #166 (P2-64g) → #167 (P2-64e) → #168 (P2-64f) → #169 (P2-65)
+#62 (P2-03) → #70 (P2-09) → #73 (P2-12) → #74 (P2-13) → #75 (P2-14) → #81 (P2-20a) → #82 (P2-20b) → #83 (P2-21) → #84 (P2-22) → #107 (P2-36a) → #108 (P2-36b) → #151 (P2-58a) → #152 (P2-58b) → #153 (P2-58c) → #154 (P2-58d) → #155 (P2-59) → #159 (P2-61; after independent automated auth/roles/uploads checks) → #160 (P2-62) → #161 (P2-63) → #162 (P2-64a) → #163 (P2-64b) → #164 (P2-64c) → #165 (P2-64d) → #166 (P2-64g) → #167 (P2-64e) → #168 (P2-64f) → #169 (P2-65)
 
 ## Parallelism by wave
 
@@ -211,9 +208,9 @@ The longest chain, one ticket per wave. Keep these moving first; everything else
 | 14 | 5 | 5 |
 | 15 | 3 | 3 |
 | 16 | 3 | 3 |
-| 17 | 3 | 3 |
+| 17 | 2 | 2 |
 | 18 | 2 | 2 |
-| 19 | 3 | 3 |
+| 19 | 1 | 1 |
 | 20 | 1 | 1 |
 | 21 | 1 | 1 |
 | 22 | 1 | 1 |
@@ -230,6 +227,7 @@ Peak concurrency is 10 tickets in wave 2. Running four to six agents keeps most 
 
 ## Open questions carried from the ticket draft
 
-1. IP allowlist or outer authentication for the Hetzner test host (#161 assumes allowlist).
-2. Argon2id parameters (#64).
-3. Logo and colour branding: Phase 2 after #155, or Phase 4.
+1. Argon2id parameters (#64).
+2. Logo and colour branding: Phase 2 after #155, or Phase 4.
+
+The former Hetzner-host protection choice is not a Phase 2 question: there is no Phase 2 production/test-host deployment. Host protection and real-host evidence remain deferred release work. Issues #156–#158 are held for human signoff beyond Phase 2; automated auth/roles/uploads checks remain Phase 2 acceptance. The reporter should update the affected review/deploy issue bodies to distinguish automated Debian-harness checks from deferred human signoff and Hetzner evidence; see the implementor handoff for exact proposed text.
