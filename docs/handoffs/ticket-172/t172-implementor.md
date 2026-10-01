@@ -12,7 +12,7 @@
 
 ## Candidate and scope
 
-I implemented the approved #172 production scope on top of base `87914188325291cb6fe38ff5961303bef9b23cef`. The tested implementation candidate was `f17194a90a5bce66657683653f954862c6efd405`. This checkpoint document is a later, documentation-only commit. The current branch HEAD is `cafc49f...`, which adds a sibling test-writer checkpoint; neither checkpoint changes the tested production or test blobs. Reconcile those commits and the current base before any future review or gate. Do not treat this documentation commit as a new implementation candidate or as invalidating/repeating tests by assumption.
+I implemented the approved #172 production scope on top of base `87914188325291cb6fe38ff5961303bef9b23cef`. The tested implementation candidate was `f17194a90a5bce66657683653f954862c6efd405`. This checkpoint document is a later, documentation-only commit. The current branch HEAD when this reconciliation was written was `9534d5e851c5bd591a10a5940c63613b312ac6af`. The checkpoint-only commits are `cafec49` (test-writer), `ca041a4` (implementor), and `9534d5e` (reviewer); none changes the tested production or test blobs. The reviewer independently reconciled these documentation commits against the historical candidate.
 
 My only production files were:
 
@@ -43,11 +43,13 @@ Committed-candidate logs and revision are under `/tmp/composure-172-stage2/`, in
 
 I did not run `bash scripts/test-phase1`. The reviewer owns exactly one authoritative full gate after cheap review and provisional approval, against a frozen candidate/base. No authoritative gate result is claimed here. The fake-scanner acceptance tests are not a substitute for the real pinned scan, which passed as recorded above.
 
-## Next step and constraints
+## Later reviewer reconciliation and current next step
 
-The next logical role is the independent read-only reviewer. First reconcile the current branch and base with the implementation candidate and the sibling checkpoint commits. Preserve round 0/2 and review cap 2 across attempts. The reviewer must inspect the diff and evidence, do cheap adversarial review, provisionally approve and freeze candidate/base before running the single authoritative gate. Do not retry a failed full gate. Any code/base change returns the work to cheap review; do not carry approval forward blindly.
+The sibling checkpoint `docs/handoffs/ticket-172/t172-review-fresh.md` records the later independent reviewer result. The reviewer reconciled the implementation and checkpoint-only commits and approved historical candidate `dd44df3b23bfb5acbe3c1697d7a0a409a3ad610c` against frozen base `f5a010dce03d2f4a8fb797029b59c2d1bacfcb1d`. That result is FINAL APPROVED, review round 1 of 2, with exactly one authoritative `bash scripts/test-phase1` invocation and exit 0. It is historical candidate/base evidence, not an assertion that any different current HEAD has been reviewed.
 
-The existing `.venv-browser` symlink was present and left untouched. No issue, PR, push, rebase, merge, closure, or worktree cleanup was performed. The implementor made no test changes. There are no known implementation blockers; final review and its gate remain outstanding.
+The next logical role is reporter, not another reviewer and not another gate. Do not restart review at round 0 or rerun the passed authoritative gate. Main must reconcile the current implementation/test blobs and base with the reviewer-approved candidate before reporter actions. Any relevant source, test, or base change needs the applicable fresh review and validation decision; the original one-gate result must remain recorded and must not be silently retried.
+
+The existing `.venv-browser` symlink was present and left untouched. I made no test changes and performed no issue, PR, push, rebase, merge, closure, or worktree cleanup. No implementor blocker was known; the historical review and gate completed successfully, and reporter is the remaining logical stage.
 
 ## Suggested skills
 
