@@ -16,17 +16,17 @@ Status: Draft written 2026-09-30 from `docs/phase3/tickets.md`. Integration bran
 | Lane | Files owned | Tickets in order |
 | --- | --- | --- |
 | Content model contract | `docs/phase3/content-model.md` and `content-model/` | P3-01a → P3-01b → P3-01c → P3-01d |
-| Field kind contracts | `docs/phase3/field-kinds.md` and `field-kinds/` (one file per ticket) | P3-02a, then P3-02b to P3-02h in parallel |
+| Field kind contracts | `docs/phase3/field-kinds.md` and `field-kinds/` (one file per ticket) | P3-02a, then P3-02b-1, P3-02b-2, P3-02c, P3-02d-1, P3-02d-2, P3-02e-1, P3-02e-2 and P3-02f to P3-02h in parallel |
 | Snapshot, cache, listing, mutability contracts | `docs/phase3/snapshots.md`, `cache.md`, `listing.md`, `config-mutability.md` | P3-03, P3-05, P3-06, P3-07 in parallel |
-| Rich text decision | `docs/phase3/rich-text.md`, `docs/adr/0002-rich-text.md` | P3-04 |
-| Config package | `internal/config/v2.go`, `changes.go` | P3-08 → P3-09 → P3-10 → P3-12 |
+| Rich text decision | `docs/phase3/rich-text.md`, `docs/adr/0002-rich-text.md`, `tools/tiptap-bundle/` (build inputs only) | P3-04 |
+| Config package | `internal/config/v2.go`, `changes.go`, `internal/store/config_write.go` (P3-09 also edits version and decode call sites in `internal/store/store.go`, `internal/site/site.go`, `internal/cli/`, `internal/web/web.go` and `internal/content/content.go`) | P3-08 → P3-09 → P3-10 → P3-12 |
 | Store: types and listing | `internal/store/schema/*.sql`, `listing.go`, `snapshots.go` | P3-11 → P3-26 → P3-28 |
 | Store: generation and references | `internal/store/schema/*.sql`, `generation.go`, `references.go` | P3-34 → P3-45 (store part) |
 | Content kinds | `internal/content/kinds.go` and one file per kind | P3-39, then each kind ticket in parallel |
 | Render | `internal/render/item.go`, `cache.go`, per-type templates | P3-40 → P3-35 → P3-36 → P3-66 |
 | Rich text package | `internal/richtext/`, `internal/web/static/` | P3-60 → P3-61 → P3-62 → P3-63 → P3-64 |
-| Web builder | `internal/web/model.go`, `admin_model*.html` | P3-13 → P3-14 → P3-15 → P3-16 → P3-17 → P3-18 → P3-48 → P3-59 |
-| Web editorial | `internal/web/content.go`, `form.go`, `admin_content*.html` | P3-19 → P3-20 → P3-21 → P3-22 → P3-23 → P3-24 → P3-33 → P3-27 |
+| Web builder | `internal/web/model.go`, `admin_model*.html` (P3-13 also edits the `serve` path in `internal/cli/cli.go`, the `Handler`/`Server` signature in `internal/web/web.go`, the admin layout data, and the P2-61 systemd unit template under `deploy/` with its render test; P3-14 adds the builder link to the admin layout navigation template) | P3-13 → P3-14 → P3-15 → P3-16 → P3-17 → P3-18 → P3-48 → P3-59 |
+| Web editorial | `internal/web/content.go`, `form.go`, `admin_content*.html` (P3-19 also renames the list class in `admin.css` and removes `admin_list.html`) | P3-19 → P3-20 → P3-21 → P3-22 → P3-23 → P3-24 → P3-33 → P3-27 |
 | Web history | `internal/web/history.go`, `admin_history*.html` | P3-29 → P3-30 → P3-31 → P3-32 |
 | Web field controls | `internal/web/controls/` (one file per kind) | P3-42, P3-46, P3-58 |
 | Settings | `internal/web/settings.go` | P3-43 |
@@ -42,7 +42,7 @@ Status: Draft written 2026-09-30 from `docs/phase3/tickets.md`. Integration bran
 | 2 | P3-01b, P3-06 |
 | 3 | P3-01c, P3-08 |
 | 4 | P3-01d, P3-02a, P3-09, P3-10, P3-39 |
-| 5 | P3-02b to P3-02h, P3-03, P3-07, P3-11, P3-40 |
+| 5 | P3-02b-1, P3-02b-2, P3-02c, P3-02d-1, P3-02d-2, P3-02e-1, P3-02e-2, P3-02f to P3-02h, P3-03, P3-07, P3-11, P3-40 |
 | 6 | P3-12, P3-13, P3-19, P3-26, P3-28, P3-41, P3-44, P3-50 to P3-56, P3-60, P3-61 |
 | 7 | P3-14, P3-20, P3-27, P3-29, P3-43, P3-54, P3-57, P3-62, P3-64 |
 | 8 | P3-15, P3-21, P3-30, P3-42 |
