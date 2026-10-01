@@ -30,6 +30,12 @@ jobs:
         with:
           go-version-file: go.mod
 
+      - name: Check Go vulnerabilities
+        run: |
+          export GOBIN="$(go env GOPATH)/bin"
+          go install golang.org/x/vuln/cmd/govulncheck@v1.3.0
+          "$GOBIN/govulncheck" ./...
+
       - name: Install pinned browser tests
         run: bash scripts/install-browser-tests
 
