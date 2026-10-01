@@ -8,7 +8,9 @@ from pathlib import Path
 import re
 import shlex
 import subprocess
+import sys
 import tempfile
+import textwrap
 import unittest
 from unittest.mock import patch
 
@@ -16,6 +18,14 @@ from unittest.mock import patch
 REPO = Path(__file__).resolve().parents[1]
 PROBE = "COMPOSURE_BROWSER_FAILURE_PROBE"
 EXPRESSION = "${{ github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'ci-failure-probe') && '1' || '0' }}"
+PINNED_SCANNER = r"golang\.org/x/vuln/cmd/govulncheck@v\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?"
+
+
+def scanner_go_arguments(arguments):
+    return arguments == ["env", "GOPATH"] or (
+        len(arguments) == 2 and arguments[0] == "install"
+        and re.fullmatch(PINNED_SCANNER, arguments[1]) is not None
+    )
 
 
 def workflow_steps():
@@ -61,8 +71,10 @@ class CIPhase1Tests(unittest.TestCase):
         self.assertLess(libraries, gate)
         self.assertNotIn(["scripts/test"], normalized)
         self.assertNotIn(["scripts/test-browser"], normalized)
-        self.assertFalse(any(tokens[:1] == ["go"] for tokens in normalized),
-                         "the phase gate owns the Go suite")
+        for tokens in normalized:
+            if tokens[:1] == ["go"]:
+                self.assertTrue(scanner_go_arguments(tokens[1:]),
+                                "only pinned scanner installation/GOPATH lookup may bypass the phase gate")
 
     def test_label_opt_in_reaches_browser_instead_of_go(self):
         _, steps = workflow_steps()
@@ -102,6 +114,46 @@ class CIPhase1Tests(unittest.TestCase):
             (root / "go.mod").write_text("module example.test/ci\n")
             (root / "scripts/test-phase1").write_bytes((REPO / "scripts/test-phase1").read_bytes())
             log = root / "calls"
+            tools = root / "tools"
+            tools.mkdir()
+            # No real Go or scanner is reachable through the fixture PATH.
+            (tools / "bash").symlink_to("/bin/bash")
+            (tools / "python3").symlink_to(sys.executable)
+            fake = "#!" + sys.executable + "\n" + textwrap.dedent('''\
+                import os
+                from pathlib import Path
+                import re
+                import shutil
+                import sys
+
+                name = Path(sys.argv[0]).name
+                args = sys.argv[1:]
+                if name == "go":
+                    pinned = os.environ["PINNED_SCANNER"]
+                    if args != ["env", "GOPATH"] and not (
+                        len(args) == 2 and args[0] == "install"
+                        and re.fullmatch(pinned, args[1])
+                    ):
+                        raise SystemExit("unexpected direct Go invocation: " + repr(args))
+                    with open(os.environ["CALL_LOG"], "a") as log:
+                        log.write("scanner-go:" + " ".join(args) + "\\n")
+                    if args == ["env", "GOPATH"]:
+                        print(os.environ["GOPATH"])
+                    else:
+                        target = Path(os.environ["GOPATH"]) / "bin/govulncheck"
+                        target.parent.mkdir(parents=True, exist_ok=True)
+                        shutil.copyfile(Path(sys.argv[0]).with_name("govulncheck"), target)
+                        target.chmod(0o755)
+                else:
+                    if args != ["./..."]:
+                        raise SystemExit("unexpected scanner invocation: " + repr(args))
+                    with open(os.environ["CALL_LOG"], "a") as log:
+                        log.write("scanner:./...\\n")
+                ''')
+            for name in ("go", "govulncheck"):
+                path = tools / name
+                path.write_text(fake)
+                path.chmod(0o755)
             stubs = {
                 "scripts/install-browser-tests": 'printf "install\\n" >> "$CALL_LOG"\n',
                 ".venv-browser/bin/python": 'printf "deps:%s\\n" "$*" >> "$CALL_LOG"\n',
@@ -114,27 +166,62 @@ class CIPhase1Tests(unittest.TestCase):
                 path = root / name
                 path.write_text("#!/bin/bash\nset -euo pipefail\n" + body)
                 path.chmod(0o755)
-            for probe in ("0", "1"):
-                with self.subTest(probe=probe):
-                    log.unlink(missing_ok=True)
-                    status = 0
-                    for command, environment in steps:
-                        if not command:
-                            continue
-                        env = {**os.environ, "CALL_LOG": str(log), PROBE: "0",
-                               "COMPOSURE_CI_FAILURE_PROBE": "0"}
-                        for key, value in environment.items():
-                            # Exact expression semantics are checked separately above.
-                            env[key] = probe if value == EXPRESSION else value.strip("'\"")
-                        result = subprocess.run(["/bin/bash", "-e", "-o", "pipefail", "-c", command],
-                                                cwd=root, env=env, capture_output=True, text=True, timeout=15)
-                        status = result.returncode
-                        if status:
-                            break
-                    self.assertEqual(status, 37 if probe == "1" else 0)
-                    self.assertEqual(log.read_text().splitlines(), [
-                        "install", "deps:-m playwright install-deps chromium", "go:0", "browser:" + probe,
-                    ])
+            # Also exercise the new interception before production adds a scanner.
+            install = "go install golang.org/x/vuln/cmd/govulncheck@v0.0.0"
+            variants = {
+                "workflow": steps,
+                "fake scanner on PATH": [(install + "\ngovulncheck ./...", {})] + steps,
+                "fake installed scanner": [(install, {}),
+                                           ('"$(go env GOPATH)/bin/govulncheck" ./...', {})] + steps,
+            }
+            for variant, commands in variants.items():
+                for probe in ("0", "1"):
+                    with self.subTest(variant=variant, probe=probe):
+                        log.unlink(missing_ok=True)
+                        status = 0
+                        for command, environment in commands:
+                            if not command:
+                                continue
+                            env = {"PATH": str(tools), "HOME": str(root),
+                                   "GOPATH": str(root / "go"), "PINNED_SCANNER": PINNED_SCANNER,
+                                   "CALL_LOG": str(log), PROBE: "0", "COMPOSURE_CI_FAILURE_PROBE": "0"}
+                            for key, value in environment.items():
+                                # Exact expression semantics are checked separately above.
+                                env[key] = probe if value == EXPRESSION else value.strip("'\"")
+                            result = subprocess.run(["/bin/bash", "-e", "-o", "pipefail", "-c", command],
+                                                    cwd=root, env=env, capture_output=True, text=True, timeout=15)
+                            status = result.returncode
+                            if status:
+                                break
+                        self.assertEqual(status, 37 if probe == "1" else 0,
+                                         result.stdout + result.stderr)
+                        calls = log.read_text().splitlines()
+                        core = []
+                        for call in calls:
+                            if call.startswith("scanner-go:"):
+                                self.assertTrue(scanner_go_arguments(shlex.split(call.partition(":")[2])), call)
+                            elif call == "scanner:./...":
+                                continue
+                            else:
+                                core.append(call)
+                        self.assertEqual(core, [
+                            "install", "deps:-m playwright install-deps chromium", "go:0", "browser:" + probe,
+                        ])
+                        if variant != "workflow":
+                            self.assertIn("scanner-go:" + install.removeprefix("go "), calls)
+                            self.assertIn("scanner:./...", calls)
+
+            # Unauthorized suite commands and mutable/unrelated installs stay rejected.
+            for arguments in (["test", "./..."], ["test", "-race", "./..."],
+                              ["build", "./..."], ["vet", "./..."], ["env", "GOBIN"],
+                              ["install", "golang.org/x/vuln/cmd/govulncheck@latest"],
+                              ["install", "example.test/tool@v1.2.3"]):
+                with self.subTest(forbidden_go=arguments):
+                    self.assertFalse(scanner_go_arguments(arguments))
+                    result = subprocess.run([str(tools / "go"), *arguments], cwd=root,
+                                            env=env, capture_output=True, text=True, timeout=15)
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertIn("unexpected direct Go invocation", result.stderr)
 
 
 class BrowserProbeContractTests(unittest.TestCase):
