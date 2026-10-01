@@ -1,0 +1,15 @@
+{
+  "id": "01a0f39f-e3a3-7abc-8def-0123456789ac",
+  "time": "2026-09-30T18:44:12.123Z",
+  "action": "account.sign_in",
+  "actor": null,
+  "target": {
+    "kind": "operation",
+    "id": "account.sign_in"
+  },
+  "outcome": "failure",
+  "count": 7,
+  "failure_code": "invalid_credentials",
+  "first_time": "2026-09-30T18:40:00.000Z",
+  "last_time": "2026-09-30T18:44:12.123Z"
+}
