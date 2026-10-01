@@ -21,25 +21,44 @@ const throttleTimestampLayout = "2006-01-02T15:04:05.000Z"
 type Throttle struct {
 	store    *Store
 	capacity int
+	worker   *storeWorker
 }
 
-// NewThrottle constructs a throttle whose capacity bounds active subject rows.
-func NewThrottle(store *Store, capacity int) (*Throttle, error) {
+// NewThrottle constructs a throttle whose capacity bounds active subject rows
+// and starts its idle-counter maintenance worker.
+func NewThrottle(store *Store, capacity int, options ...ThrottleOption) (*Throttle, error) {
 	if store == nil || store.db == nil {
 		return nil, errors.New("throttle requires an open store")
 	}
 	if capacity < 2 {
 		return nil, errors.New("throttle capacity must allow at least an account/IP pair")
 	}
-	return &Throttle{store: store, capacity: capacity}, nil
+	config := throttleMaintenanceConfig{interval: time.Minute}
+	for _, option := range options {
+		if option == nil {
+			return nil, errors.New("throttle option must not be nil")
+		}
+		option(&config)
+	}
+	if config.ownerSet && config.owner == nil {
+		return nil, errors.New("throttle maintenance context must not be nil")
+	}
+	if config.owner == nil {
+		config.owner = context.Background()
+	}
+	limiter := &Throttle{store: store, capacity: capacity}
+	if err := startThrottleMaintenance(store, limiter, config); err != nil {
+		return nil, err
+	}
+	return limiter, nil
 }
 
 type throttleCounter struct {
-	found      bool
-	started    time.Time
-	expires    time.Time
-	next       time.Time
-	count      int
+	found   bool
+	started time.Time
+	expires time.Time
+	next    time.Time
+	count   int
 }
 
 // Admit atomically increments both counters if neither subject is delayed and
