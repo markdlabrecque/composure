@@ -1,8 +1,8 @@
 # Ticket 69 implementor checkpoint
 
-Live agent: `t69-implementor`  
-Logical role: implementor, documentation-only validation route  
-Model and effort: `gpt-6-luna`, high  
+Live agent: `t69-implementor`
+Logical role: implementor, documentation-only validation route
+Model and effort: `gpt-6-luna`, high
 Checkpoint date: 2026-10-01
 
 ## Current ticket state
