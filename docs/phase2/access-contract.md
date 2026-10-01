@@ -6,5 +6,6 @@ This index links the access and account decisions for phase 2. Each section has 
 - [Invitation and password-reset tokens](access-contract/02-tokens.md)
 - [Password hashing](access-contract/03-passwords.md)
 - [Cookies and CSRF](access-contract/04-cookies-and-csrf.md)
+- [Throttling counters and backoff](access-contract/05-throttling.md)
 - [Roles](access-contract/06-roles.md)
 - [Session revocation](access-contract/07-revocation.md)
