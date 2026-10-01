@@ -45,9 +45,11 @@ For the administrator CLI commands, `--site DIR` selects the site explicitly. If
 
 The same route and method may receive a redirect or generic rejection for unauthenticated, unauthorized, invalid-token, or invalid-CSRF requests; those outcomes do not relax the principal or controls in the table. All state-changing admin requests are POST in this phase. Safe methods must not mutate state.
 
-## Current Phase 1 prototype (source inventory)
+## Current Phase 2 base source inventory
 
-These are the interfaces actually registered in `internal/web/web.go` and `internal/cli/cli.go` at the Phase 2 base revision. They are not security-approved Phase 2 behavior. The `admin` routes currently operate without accounts, sessions, roles, CSRF tokens, token flows, or throttles; draft writes use the `local-prototype` actor. The server currently constrains its listener to loopback and checks Host/cross-origin requests, but these controls do not grant authentication or authorization.
+This inventory snapshots source at Phase 2 base `f5a010dce03d2f4a8fb797029b59c2d1bacfcb1d`; it is not a claim about later revisions or security approval. Phase 2 account storage, persisted sessions, session-loading middleware, and the sign-in routes are present. `GET /admin/sign-in` and `POST /admin/sign-in` are registered in `internal/web/signin.go`: the form uses a pre-authentication nonce and CSRF token, and successful credential checks create a persisted session and set its cookie. The session middleware in `internal/web/session.go` validates persisted session/account state, but `Handler` does not install it, and it is not an authorization guard. Sign-in has no throttle or audit integration at this base.
+
+The separate Page routes remain the unguarded Phase 1 prototype: they do not require a session or role, Page POSTs do not check CSRF, and draft writes use the `local-prototype` actor. Loopback binding and Host/cross-origin checks do not provide authentication or authorization.
 
 | Interface | Current method / command and path | Current principal / role | Current controls and source |
 | --- | --- | --- | --- |
@@ -59,7 +61,9 @@ These are the interfaces actually registered in `internal/web/web.go` and `inter
 | HTTP | `GET /healthz` | Public. | Health response. `internal/web/web.go`. |
 | HTTP | `GET /` and `GET /{published-path}` | Public. | Renders published Page or 404. `internal/web/web.go`. |
 | HTTP | `GET /admin/static/admin.css` | Public. | Static stylesheet. `internal/web/web.go`. |
-| HTTP | `GET /admin` | Prototype local visitor; no role. | Redirects to `/admin/pages`; no session. `internal/web/web.go`. |
+| HTTP | `GET /admin/sign-in` | Unauthenticated visitor. | Issues or reuses the pre-authentication nonce cookie and renders its CSRF token. No session or role check. `internal/web/signin.go`; `internal/web/signin_test.go`. |
+| HTTP | `POST /admin/sign-in` | Unauthenticated visitor; successful account must be active. | Requires the pre-authentication nonce and matching CSRF token before credential lookup. On success creates a persisted session and sets its cookie. No throttle or audit integration at this base. `internal/web/signin.go`; `internal/web/signin_test.go`. |
+| HTTP | `GET /admin` | Prototype local visitor; no role. | Redirects to `/admin/pages`; no session guard. `internal/web/web.go`. |
 | HTTP | `GET /admin/pages` | Prototype local visitor; no role. | Lists Pages; no session. `internal/web/web.go`. |
 | HTTP | `GET /admin/pages/new` | Prototype local visitor; no role. | New Page form; no session. `internal/web/web.go`. |
 | HTTP | `POST /admin/pages` | Prototype local visitor; no role. | Creates draft; form validation only, no CSRF; `internal/web/web.go`. |
@@ -68,4 +72,6 @@ These are the interfaces actually registered in `internal/web/web.go` and `inter
 | HTTP | `POST /admin/pages/{id}` | Prototype local visitor; no role. | Saves draft with actor `local-prototype`; no CSRF. `internal/web/web.go`. |
 | HTTP | `POST /admin/pages/{id}/publish` | Prototype local visitor; no role. | Publishes with actor `local-prototype`; no CSRF. `internal/web/web.go`. |
 
-Phase 1 `config validate` and `config export` are listed as existing tools, not new Phase 2 account-management commands. The Phase 2 role contract mentions deployment/export/restore as operator functions; those future Phase 6 commands are outside this Phase 2 inventory because no Phase 2 ticket defines their command syntax or routes. Do not infer authorization for an unlisted future interface from this table. The role matrix grants administrators account viewing. This inventory adds `GET /admin/accounts` and `GET /admin/accounts/{id}` to make that access explicit alongside the ticketed account-management actions; these routes are target API requirements, not evidence of current implementation.
+`GET /admin/accounts` and `GET /admin/accounts/{id}` above are target API requirements, not evidence of current implementation. The same distinction applies to other Phase 2 target rows. Phase 1 `config validate` and `config export` are existing tools, not new Phase 2 account-management commands. The Phase 2 role contract mentions deployment/export/restore as operator functions; those future Phase 6 commands are outside this inventory because no Phase 2 ticket defines their syntax or routes. Do not infer authorization for an unlisted future interface.
+
+For audit scope, see [covered actions and recording points](../audit-events/02-actions.md) and [throttling, counted failures, and retention](../audit-events/04-throttling-and-retention.md#ordering-and-counted-failures). Invitation issuance and password-reset request initiation are not audit actions; invitation acceptance (`account.created`) and reset completion (`password.changed`) are covered. This is contract scope, not a claim that audit recording is implemented at the Phase 2 base.
