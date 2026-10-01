@@ -25,11 +25,6 @@ Invoke `/subagent-tdd-pipeline` for the ticket. Follow its test-writer, implemen
 
 The dispatching orchestrator selects the implementor model and reasoning effort before sending out the ticket:
 
-### Claude Code orchestration
-- When using a Claude Code orchestrator, only use Claude Code subagents, and make them all use Fable 5.1 models.
-
-### Codex orchestration
-Follow these instructions only when using a Codex orchestrator:
 - Check the issue's routing labels first. `Sol` selects `gpt-6.1-sol`; `Luna` selects `gpt-6-luna`. If neither label is present, choose between these models based on the ticket's difficulty, scope, and risk. If both are present, stop and ask Mark to resolve the conflict. Preserve the labels.
 - Choose a supported reasoning effort based on the ticket's difficulty: `low` for straightforward changes, `medium` for moderate work, and `high` or `xhigh` for complex logic, uncertain behavior, or substantial correctness risk.
 - Record the selected model, reasoning effort, and brief rationale in the ticket handoff. The receiving ticket orchestrator must pass those values explicitly when spawning the `implementor` with fresh context. These selections override the implementor profile's model and reasoning-effort defaults and the pipeline's model-family restriction for this project.
