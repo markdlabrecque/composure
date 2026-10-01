@@ -9,3 +9,4 @@ This index links the access and account decisions for phase 2. Each section has 
 - [Throttling counters and backoff](access-contract/05-throttling.md)
 - [Roles](access-contract/06-roles.md)
 - [Session revocation](access-contract/07-revocation.md)
+- [Development storage policy](development-storage-policy.md)
