@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"path/filepath"
 	"sort"
+	"sync"
 	"time"
 
 	"github.com/markdlabrecque/composure/internal/config"
@@ -25,7 +26,17 @@ var schemaFiles embed.FS
 const ApplicationID = 0x434D5053
 const SchemaVersion = 1
 
-type Store struct{ db *sql.DB }
+type Store struct {
+	db *sql.DB
+
+	lifecycleMu sync.Mutex
+	closing     bool
+	workers     []*storeWorker
+	closeDone   chan struct{}
+	closeErr    error
+	lifecycle   context.Context
+	cancel      context.CancelFunc
+}
 
 // StateError identifies a rejected site without treating it as an I/O failure.
 type StateError struct {
@@ -201,8 +212,9 @@ func open(ctx context.Context, path string, validateDocument, readOnly bool) (*S
 			return nil, active, err
 		}
 	}
+	lifecycle, cancel := context.WithCancel(context.Background())
 	ok = true
-	return &Store{db}, active, nil
+	return &Store{db: db, lifecycle: lifecycle, cancel: cancel, closeDone: make(chan struct{})}, active, nil
 }
 func compatible(kind string, version int) error {
 	if version == 1 {
@@ -213,7 +225,42 @@ func compatible(kind string, version int) error {
 	}
 	return &StateError{4, fmt.Sprintf("%s version %d is newer than supported 1; use a newer composure binary", kind, version)}
 }
-func (s *Store) Close() error { return s.db.Close() }
+func (s *Store) Close() error {
+	s.lifecycleMu.Lock()
+	if s.closing {
+		done := s.closeDone
+		s.lifecycleMu.Unlock()
+		<-done
+		return s.closeErr
+	}
+	s.closing = true
+	s.cancel()
+	workers := append([]*storeWorker(nil), s.workers...)
+	s.lifecycleMu.Unlock()
+
+	for _, worker := range workers {
+		worker.cancel()
+	}
+	for _, worker := range workers {
+		<-worker.done
+	}
+	err := s.db.Close()
+	s.lifecycleMu.Lock()
+	s.closeErr = err
+	close(s.closeDone)
+	s.lifecycleMu.Unlock()
+	return err
+}
+
+func (s *Store) registerWorker(worker *storeWorker) error {
+	s.lifecycleMu.Lock()
+	defer s.lifecycleMu.Unlock()
+	if s.closing {
+		return errors.New("store is closing")
+	}
+	s.workers = append(s.workers, worker)
+	return nil
+}
 func (s *Store) PublishedByPath(ctx context.Context, path string) (content.Snapshot, error) {
 	var page content.Snapshot
 	var fields string
