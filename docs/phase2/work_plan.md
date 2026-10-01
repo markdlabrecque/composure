@@ -6,7 +6,7 @@ Status: written 2026-09-30 from `docs/phase2/tickets.md` and GitHub issues #58 t
 
 - A **lane** is a set of tickets that touch the same files. Tickets inside a lane run one after another. Different lanes can run at the same time.
 - A **wave** is the earliest point a ticket can start, counting both its stated dependencies and its place in its lane. Everything in one wave can run in parallel, and each ticket may start as soon as its own prerequisites are merged, without waiting for the rest of its wave.
-- The longest chain is 28 waves. That is the floor on wall-clock time no matter how many agents run.
+- The critical dependency chain has 27 ticket steps and reaches wave 28; it skips wave 17, which has no ticket on this chain. The 28 numbered waves are therefore the earliest finish wave, not a count of tickets on the chain.
 - Each ticket still follows the dispatch, review, merge and closure rules in `docs/work_plan.md`. A ticket starts only when its prerequisites are merged and closed.
 
 ## Rules that keep lanes from colliding
@@ -184,9 +184,9 @@ Status: written 2026-09-30 from `docs/phase2/tickets.md` and GitHub issues #58 t
 
 ## Critical path
 
-The longest chain, one ticket per wave. Keep these moving first; everything else has slack.
+The critical dependency chain has 27 ticket steps across wave numbers 1–16 and 18–28. Keep these moving first; everything else has slack. #159 also requires the independent automated auth, roles and uploads checks listed in its wave dependency; those checks are gates, not additional tickets on this chain.
 
-#62 (P2-03) → #70 (P2-09) → #73 (P2-12) → #74 (P2-13) → #75 (P2-14) → #81 (P2-20a) → #82 (P2-20b) → #83 (P2-21) → #84 (P2-22) → #107 (P2-36a) → #108 (P2-36b) → #151 (P2-58a) → #152 (P2-58b) → #153 (P2-58c) → #154 (P2-58d) → #155 (P2-59) → #159 (P2-61) → #160 (P2-62) → #161 (P2-63) → #162 (P2-64a) → #163 (P2-64b) → #164 (P2-64c) → #165 (P2-64d) → #166 (P2-64g) → #167 (P2-64e) → #168 (P2-64f) → #169 (P2-65)
+#62 (P2-03) → #70 (P2-09) → #73 (P2-12) → #74 (P2-13) → #75 (P2-14) → #81 (P2-20a) → #82 (P2-20b) → #83 (P2-21) → #84 (P2-22) → #107 (P2-36a) → #108 (P2-36b) → #151 (P2-58a) → #152 (P2-58b) → #153 (P2-58c) → #154 (P2-58d) → #155 (P2-59) → #159 (P2-61; after independent automated auth/roles/uploads checks) → #160 (P2-62) → #161 (P2-63) → #162 (P2-64a) → #163 (P2-64b) → #164 (P2-64c) → #165 (P2-64d) → #166 (P2-64g) → #167 (P2-64e) → #168 (P2-64f) → #169 (P2-65)
 
 ## Parallelism by wave
 
@@ -208,9 +208,9 @@ The longest chain, one ticket per wave. Keep these moving first; everything else
 | 14 | 5 | 5 |
 | 15 | 3 | 3 |
 | 16 | 3 | 3 |
-| 17 | 3 | 3 |
+| 17 | 2 | 2 |
 | 18 | 2 | 2 |
-| 19 | 3 | 3 |
+| 19 | 1 | 1 |
 | 20 | 1 | 1 |
 | 21 | 1 | 1 |
 | 22 | 1 | 1 |

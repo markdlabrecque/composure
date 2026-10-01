@@ -253,11 +253,11 @@ Dependencies: Phase 6. Validates all functional and quality requirements.
 
 ## Sequencing and risks
 
-The main sequence is 1 → 2 → 3 → 4 → 5 → 6 → 7. Page storage and deployment safety boundaries start in phase 1. Audit recording and the first protected host deployment/load smoke test arrive in phase 2. Define detailed contracts when their first feature arrives. Phase 6 proves recovery and deployment interactions. Security, validation and usability are part of each phase; phase 7 verifies the finished release.
+The main sequence is 1 → 2 → 3 → 4 → 5 → 6 → 7. Page storage and deployment safety boundaries start in phase 1. Audit recording and automated deployment/security checks in the Debian-based Docker harness arrive in phase 2; real-host deployment and load evidence are deferred beyond that phase. Define detailed contracts when their first feature arrives. Phase 6 proves recovery and deployment interactions. Security, validation and usability are part of each phase; phase 7 verifies the finished release.
 
 The most consequential implementation risks are snapshot compatibility after model changes, relationships across deletion and restoration, file retention across every content state, URL reservations and redirect chains, and consistent database-and-file recovery. Follow the ADR's data-preservation boundaries and settle feature-specific rules when each feature arrives.
 
-Before phase 3 choose the rich-text bundle and sanitizer; before the phase 2 host test record host size and page mix. Concurrent edits, model-change rules and configuration ownership are already fixed by the Page contract and ADR. Partial import semantics are deferred with that feature. Calendar estimates need phase 1 evidence and available capacity; the architecture document's older day estimates are not commitments.
+Before phase 3 choose the rich-text bundle and sanitizer. Phase 2 uses the Debian-based Docker harness for automated deployment/security checks; it has no real-host deployment or load test. Human security signoff and real Hetzner evidence remain deferred beyond Phase 2 and required before production. Concurrent edits, model-change rules and configuration ownership are already fixed by the Page contract and ADR. Partial import semantics are deferred with that feature. Calendar estimates need phase 1 evidence and available capacity; the architecture document's older day estimates are not commitments.
 
 ## Boundary after v1
 
