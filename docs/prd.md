@@ -54,7 +54,7 @@ Success means:
 - Draft changes stay private until publication, and editors can preview the page they intend to publish.
 - The public site serves published items for the five launch content types, navigation, and media.
 - Mark can deploy an update, create a full site export, and restore it.
-- Security-sensitive code passes human review before v1 release. Load testing checks the agreed baseline on the intended hosting.
+- Security-sensitive code passes human review before v1 release and any production deployment. Load testing checks the agreed baseline on the intended hosting. Phase 2 development/Docker-harness evidence is not human approval, real-host evidence, or permission to deploy production.
 
 The first release is limited to maintainer-managed, editor-driven sites. It has no plugin marketplace, third-party code extensions, shared site database, or general-purpose site builder. Visitor-write-heavy features such as busy forms, comments, and per-pageview event collection require a separate decision before inclusion. A Postgres adapter is outside the first release.
 
@@ -121,7 +121,7 @@ Priority **P0** means required for v1.
 
 ### Security and privacy
 
-- Authentication, authorization, sessions, CSRF protection, and upload handling are required launch controls. A human reviews security-sensitive changes and the deployed configuration. Before any client launch, someone other than the implementation author reviews auth and uploads. CI pins dependencies, runs govulncheck and staticcheck, and runs bounded parser/upload fuzz tests once those components exist.
+- Authentication, authorization, sessions, CSRF protection, and upload handling are required launch controls. A human reviews security-sensitive changes and the deployed configuration before production use; someone other than the implementation author reviews auth and uploads before any client launch. Independent automated auth/roles/uploads checks and the Debian-based Docker deployment harness are also required, but do not replace human signoff or real-host evidence. Phase 2 is development-only: no real sites exist, no existing-site upgrade is required, and human signoff plus real Hetzner evidence are deferred beyond that phase. Production remains blocked pending deferred reviews and release evidence. CI pins dependencies, runs govulncheck and staticcheck, and runs bounded parser/upload fuzz tests once those components exist.
 - Throttle sign-in, invitation and reset requests before expensive hashing, SMTP or audit writes, using bounded per-account and per-IP counters with backoff, not permanent account lockout. Reset requests have indistinguishable responses for existing and unknown accounts. Revoke sessions on password changes, role changes and deactivation. Password warnings use a pinned local common-password list; no online password lookup or claim of exhaustive breach detection.
 - Audit CLI access recovery explicitly. Aggregate repeated authentication failures into counted entries with first/last times and outcome; rate-limited requests must not cause one SQLite write each. Default audit retention is 90 days, configurable, with bounded aggregation memory and periodic deletion.
 - The administrator and editor roles have separate permissions, which combine when assigned to the same user. The administrator role retains all of its built-in permissions. Site initialization, account changes, CLI operations, and full restores must preserve at least one active administrator account. Deactivation revokes access without erasing authorship.
@@ -154,7 +154,7 @@ V1 is ready when all P0 requirements pass in a fresh installation and the admin 
 ## Delivery sequence
 
 1. Establish CI and agent conventions, then validate one Page end to end with the chosen stack and minimal configuration format.
-2. Build and review auth, sessions, roles and upload controls; deploy the protected Page to Hetzner and run a smoke load.
+2. Build auth, sessions, roles and upload controls; verify them with independent automated checks and automated deployment/security checks in the Debian-based Docker harness. Phase 2 is development-only: defer human signoff and real Hetzner deployment/evidence to later release work. Neither harness output nor a planned deployment satisfies human approval or real-host acceptance, and production remains blocked until those controls are complete.
 3. Build generated admin screens, drafts, preview, publish-only snapshots, and public rendering for the five launch content types.
 4. Add the CLI, site branding, deployment templates, and full export and restore commands.
 5. Run the v1 release checks above, then resolve gaps before release.
