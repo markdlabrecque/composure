@@ -1,0 +1,12 @@
+{
+  "id": "01a0f39f-e3a3-7abc-8def-0123456789ab",
+  "time": "2026-09-30T18:42:17.123Z",
+  "action": "account.sign_in",
+  "actor": null,
+  "target": {
+    "kind": "operation",
+    "id": "account.sign_in"
+  },
+  "outcome": "failure",
+  "count": 1
+}
