@@ -22,7 +22,7 @@ var ErrNotFound = errors.New("content not found")
 var ErrPathTaken = errors.New("path is already owned")
 var ErrStaleDraft = errors.New("draft revision is stale")
 var ErrPathChangeUnsupported = errors.New("published Page path changes are unsupported")
-var ErrAlreadyPublished = errors.New("Page is already published")
+var ErrAlreadyPublished = errors.New("page is already published")
 
 type PathChangeUnsupportedError struct {
 	OwnedPath string
