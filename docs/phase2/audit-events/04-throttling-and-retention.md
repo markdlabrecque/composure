@@ -10,14 +10,22 @@ retention.
 
 ## Ordering and counted failures
 
-For sign-in, invitation, and password-reset request paths, perform the
-applicable [throttle admission check](../access-contract/05-throttling.md)
-first. A request rejected by that check must not proceed to password hashing,
-SMTP work, or a synchronous per-request audit write. Do not sleep in the
+For sign-in, invitation-issuance, and password-reset-request paths, perform
+the applicable [throttle admission check](../access-contract/05-throttling.md)
+first. A rejected request must not proceed to password hashing or SMTP work,
+and must not cause a synchronous per-request audit write. Do not sleep in the
 request to implement backoff. The throttle contract's rejected requests do
-not increment its account/IP counters or extend their windows. Count each throttled rejection as a failure in the in-memory aggregation,
-using its covered action and a fixed `throttled` failure code. It must not
-create a SQLite write for each rejected request.
+not increment its account/IP counters or extend their windows.
+
+Count throttled sign-in rejections in the in-memory `account.sign_in` failure
+aggregation, using the fixed `throttled` failure code. Do not create a SQLite
+write for each rejection. Invitation issuance and password-reset request
+initiation are not covered audit actions; do not emit individual or counted
+audit events for those requests, whether throttled or admitted. Enforce their
+throttles all the same. Any operational visibility for those routes belongs
+in separate bounded telemetry, not the audit log. Invitation acceptance
+(`account.created`) and reset completion (`password.changed`) remain covered
+operations under the actions contract and are audited there.
 
 Aggregate repeated failures into one event per aggregation group and
 aggregation window. A group is determined only by fixed, server-defined
@@ -42,12 +50,15 @@ from an implementation allowlist, or `null`; never put identity, error text,
 or other request-derived content there. The two timestamp fields are the only
 extension to the [redaction allowlist](03-redaction.md) for counted events.
 
-The grouping domain is finite: use only the covered action identifiers for
-throttle-protected sign-in, invitation, and password-reset requests, the
-`failure` outcome, and each action's fixed safe failure-code set (including
-`null`). CLI recovery and other non-throttled operations remain individual
-events under the actions contract. Aggregation capacity is implementation configuration,
-but its configured capacity must cover that finite supported grouping domain.
+The grouping domain is finite: use only covered authentication action
+identifiers, the `failure` outcome, and each action's fixed safe failure-code
+set (including `null`). This includes `account.sign_in`, failed invitation
+acceptance (`account.created`), and failed reset completion
+(`password.changed`); it excludes invitation issuance and reset-request
+initiation, which are not audit actions. CLI recovery and successful actions
+remain individual events under the actions contract. Aggregation capacity is
+implementation configuration, but its configured capacity must cover that
+finite supported grouping domain.
 Do not evict an unflushed group or create a group keyed by untrusted input to
 make room. If a configuration cannot hold every supported group, reject it
 rather than silently discard or misgroup failures. Count values must remain
