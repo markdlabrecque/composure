@@ -4,3 +4,4 @@ This index links the access and account decisions for phase 2. Each section has 
 
 - [Accounts and sessions](access-contract/01-accounts-and-sessions.md)
 - [Invitation and password-reset tokens](access-contract/02-tokens.md)
+- [Session revocation](access-contract/07-revocation.md)
