@@ -1,0 +1,9 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="stylesheet" href="/admin/static/admin.css"><title>Sign in</title></head><body>
+<main><p><a href="/admin">Admin</a></p><h1>Sign in</h1>
+{{if .Error}}<p role="alert">Email or password is incorrect.</p>{{end}}
+<form method="post" action="/admin/sign-in">
+<input type="hidden" name="csrf_token" value="{{.Token}}">
+<div><label for="signin-email">Email</label><input id="signin-email" type="email" name="email" autocomplete="username" required></div>
+<div><label for="signin-password">Password</label><input id="signin-password" type="password" name="password" autocomplete="current-password" required></div>
+<button type="submit">Sign in</button></form></main></body></html>
