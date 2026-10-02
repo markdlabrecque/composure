@@ -23,6 +23,10 @@ Before creating a worktree:
 
 Invoke `/subagent-tdd-pipeline` for the ticket. Follow its test-writer, implementor, reviewer, and reporter stages, gates, evidence, and escalation rules. Use the pipeline skill's prescribed roles and model assignments for the other stages. Do not combine roles or bypass required review.
 
+For new ticket work, pilot the skill's ticket-session mode on one explicitly selected ticket before broad rollout. The parent coordinator owns dependencies, phase integration order and publication authority. Each ticket orchestrator is an independent top-level Pi session in one Herdr pane, not a subagent. It dispatches isolated named role subagents through Pi's `subagent` tool, without creating stage panes. Read `~/.agents/skills/subagent-tdd-pipeline/ticket-session.md` for launch, checkpoint and recovery requirements. Honor the project's Herdr orchestration setting for the workspace and top-level session; the role subagents need no Herdr panes. Retain candidate/base-bound evidence and review counts across restart. Existing manual or managed tickets keep their recorded execution mode until explicitly reconciled. The pipelines extension remains available for explicitly selected managed runs.
+
+Before a ticket gate or publication, the parent grants integration authority for the exact ticket candidate/base and permitted effects, serially in the plan's integration order. Changed candidate/base requires renewed authority and applicable review/gates. A ticket session does not authorize itself to publish ahead of dependencies.
+
 The dispatching orchestrator selects the implementor model and reasoning effort before sending out the ticket:
 
 - Check the issue's routing labels first. `Sol` selects `gpt-6.1-sol`; `Luna` selects `gpt-6-luna`. If neither label is present, choose between these models based on the ticket's difficulty, scope, and risk. If both are present, stop and ask Mark to resolve the conflict. Preserve the labels.

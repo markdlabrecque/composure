@@ -1,6 +1,40 @@
 # Phase 2 work plan: parallel lanes
 
-Status: written 2026-09-30 from `docs/phase2/tickets.md` and GitHub issues #58 to #176 in the Phase 2 milestone. Scope decision: Phase 2 is development-only; use the Debian-based Docker harness for automated deployment/security checks. No real sites exist and no existing-site upgrades are required. Human security signoff and real Hetzner evidence are deferred beyond Phase 2; the harness is not approval or host evidence, and production remains blocked pending those release requirements.
+Status: active, progress updated 2026-10-02. Lane and wave layout written 2026-09-30 from `docs/phase2/tickets.md` and GitHub issues #58 to #176 in the Phase 2 milestone. Scope decision: Phase 2 is development-only; use the Debian-based Docker harness for automated deployment/security checks. No real sites exist and no existing-site upgrades are required. Human security signoff and real Hetzner evidence are deferred beyond Phase 2; the harness is not approval or host evidence, and production remains blocked pending those release requirements.
+
+## Progress as of 2026-10-02
+
+The latest batch is merged into `phase-2`, summarized on GitHub, closed as completed, and retired. Integration HEAD is `cd580be9ff36402df50b5f161357386e04443dfb`. Each ticket has independent final approval and passing required hosted `Composure checks` for its publication head. The completion summaries identify the local-gate candidate and CI-tested revision separately; historical local runs are not attributed to later checkpoint-only heads.
+
+| Completed issue | Delivered scope | Merged PR | Merge commit | Completion summary |
+| --- | --- | --- | --- | --- |
+| [#172](https://github.com/markdlabrecque/composure/issues/172) | Staticcheck cleanup and retirement of the obsolete findings lease | [#213](https://github.com/markdlabrecque/composure/pull/213) | `e3c765a` | [Evidence](https://github.com/markdlabrecque/composure/issues/172#issuecomment-5942706289) |
+| [#69](https://github.com/markdlabrecque/composure/issues/69) | CLI/HTTP inventory distinguishing future interfaces from a revision-pinned source snapshot | [#214](https://github.com/markdlabrecque/composure/pull/214) | `63b16d2` | [Evidence](https://github.com/markdlabrecque/composure/issues/69#issuecomment-5943941036) |
+| [#72](https://github.com/markdlabrecque/composure/issues/72) | Atomic first-administrator initialization for fresh development sites, including canonical-empty email refusal before planning, hashing or writes | [#215](https://github.com/markdlabrecque/composure/pull/215) | `fb1c6c3` | [Evidence](https://github.com/markdlabrecque/composure/issues/72#issuecomment-5944109241) |
+| [#137](https://github.com/markdlabrecque/composure/issues/137) | Pure signature-prefix and extension classifier; DOCX classification remains provisional | [#216](https://github.com/markdlabrecque/composure/pull/216) | `cd580be` | [Evidence](https://github.com/markdlabrecque/composure/issues/137#issuecomment-5944339990) |
+
+The summaries preserve review counts, tested revisions and exceptions. #69's local gate history includes a failed browser-prerequisite run followed by one explicitly authorized passing recovery on the unchanged candidate. #137 preserves two intentional Markdown hard breaks under a narrow local whitespace-check exception; its full gate and required CI passed without exception.
+
+GitHub currently records these 29 Phase 2 issues closed: #58, #59, #60, #61, #62, #63, #64, #65, #66, #67, #68, #69, #70, #71, #72, #73, #74, #75, #77, #88, #101, #106, #114, #126, #136, #137, #170, #171 and #172. Do not redispatch them. The wave tables below retain the original dependency layout, not a live list of unfinished work.
+
+### Next dependency-ready candidates
+
+These open tickets have closed prerequisites in the lane plan. Before dispatch, verify prerequisite changes are present in the current phase branch and apply the normal scope, ownership and review checks. #81 is the next open ticket on the critical path.
+
+| Lane | Issue | Next outcome |
+| --- | --- | --- |
+| Audit package | #79 | Minimal audit recorder interface |
+| Auth package | #111 | CLI operator principal |
+| Mail package | #85 | SMTP relay configuration from deployment secrets |
+| Web sign-in | #76 | Sign-out route |
+| Web guard and CSRF | #81 | Reject unauthenticated admin requests |
+| Web invitations | #89 | Invitation form and token issue |
+| Web reset | #95 | Request-reset form with generic response |
+| CI | #173 | Make staticcheck fail the check |
+
+#138 has closed ticket prerequisites but remains held for a product decision: reconcile the accepted field-only size/dimension policy with the documented global/category defaults before #138/#139. #140 also needs approved ZIP/OOXML bounds before full DOCX validation. Neither decision was settled by #137.
+
+Other reported follow-ups remain separate work: the duplicated but consistent account-email canonicalizer, broader email grammar, SQLite browser-fixture cleanup, and incomplete contrast/manual accessibility checks. This batch does not complete Phase 2 access controls, safe uploads, human security signoff, WCAG conformance or production readiness.
 
 ## How to read this
 
