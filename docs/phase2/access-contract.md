@@ -10,3 +10,4 @@ This index links the access and account decisions for phase 2. Each section has 
 - [Roles](access-contract/06-roles.md)
 - [Session revocation](access-contract/07-revocation.md)
 - [Development storage policy](development-storage-policy.md)
+- [CLI and HTTP interface inventory](access-contract/08-interfaces.md)
