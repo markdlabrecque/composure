@@ -5,16 +5,23 @@ import os
 import shutil
 import signal
 import sqlite3
+import ssl
 import subprocess
 import sys
 import tempfile
 import unittest
 from unittest.mock import patch
-from urllib.request import urlopen
+from urllib.error import HTTPError
+from urllib.request import HTTPSHandler, HTTPRedirectHandler, Request, build_opener, urlopen
 
 from support import managed_site
 
 REPO = Path(__file__).resolve().parents[2]
+
+
+class NoRedirect(HTTPRedirectHandler):
+    def redirect_request(self, request, response, code, message, headers, new_url):
+        return None
 
 
 class BuiltAppTests(unittest.TestCase):
@@ -24,6 +31,9 @@ class BuiltAppTests(unittest.TestCase):
         cls.binary = Path(cls.build.name) / "composure"
         subprocess.run(["go", "build", "-o", str(cls.binary), "./cmd/composure"],
                        cwd=REPO, env={**os.environ, "CGO_ENABLED": "0"}, check=True)
+        cls.tls_proxy_binary = Path(cls.build.name) / "composure-tls-proxy"
+        subprocess.run(["go", "build", "-o", str(cls.tls_proxy_binary), "./tests/browser/tlsproxy"],
+                       cwd=REPO, env={**os.environ, "CGO_ENABLED": "0"}, check=True)
 
     @classmethod
     def tearDownClass(cls):
@@ -32,15 +42,17 @@ class BuiltAppTests(unittest.TestCase):
     def retain_cleanup(self, site):
         # Even the intentionally failing stub must leave no process/site behind.
         def cleanup():
-            if site.process.poll() is None:
-                site.process.terminate()
+            for process in (site.proxy_process, site.process):
+                if process is None or process.poll() is not None:
+                    continue
+                process.terminate()
                 try:
-                    site.process.wait(timeout=5)
+                    process.wait(timeout=5)
                 except subprocess.TimeoutExpired:
-                    site.process.kill()
-                    site.process.wait(timeout=5)
-            if site.process.stdout:
-                site.process.stdout.close()
+                    process.kill()
+                    process.wait(timeout=5)
+                if process.stdout:
+                    process.stdout.close()
             shutil.rmtree(site.root, ignore_errors=True)
         self.addCleanup(cleanup)
 
@@ -136,6 +148,46 @@ class SiteLifetimeTests(BuiltAppTests):
             with sqlite3.connect(first.root / "composure.db") as a, sqlite3.connect(second.root / "composure.db") as b:
                 self.assertNotEqual(a.execute("SELECT site_id FROM site").fetchone(),
                                     b.execute("SELECT site_id FROM site").fetchone())
+
+    def test_tls_proxy_preserves_cli_server_lifecycle(self):
+        with managed_site(self.binary, tls_proxy_binary=self.tls_proxy_binary) as site:
+            self.retain_cleanup(site)
+            self.assertTrue(site.url.startswith("https://[::1]:"), site.url)
+            self.assertIsNone(site.process.poll(), "TLS fixture did not retain the shipped CLI server")
+            self.assertIsNone(site.proxy_process.poll(), "TLS proxy exited before readiness")
+            with urlopen(site.url + "/healthz", context=ssl._create_unverified_context(), timeout=1) as response:
+                self.assertEqual(response.status, 200)
+                self.assertEqual(response.read().strip(), b"ok")
+            opener = build_opener(HTTPSHandler(context=ssl._create_unverified_context()), NoRedirect())
+            with opener.open(site.url + "/admin/sign-in", timeout=1) as response:
+                self.assertEqual(response.status, 200)
+            try:
+                opener.open(site.url + "/admin/pages", timeout=1)
+                self.fail("anonymous admin request was not redirected")
+            except HTTPError as response:
+                self.assertEqual(response.code, 303)
+                self.assertEqual(response.headers.get("Location"), "/admin/sign-in")
+                response.close()
+            request = Request(
+                site.url + "/admin/pages",
+                data=b"title=ignored",
+                headers={
+                    "Content-Type": "application/x-www-form-urlencoded",
+                    "Origin": "https://attacker.example",
+                },
+                method="POST",
+            )
+            try:
+                opener.open(request, timeout=1)
+                self.fail("cross-origin request was not refused")
+            except HTTPError as response:
+                self.assertEqual(response.code, 403)
+                response.close()
+            root = site.root
+            cli_process, proxy_process = site.process, site.proxy_process
+        self.assertIsNotNone(proxy_process.poll(), "TLS proxy was not reaped")
+        self.assertIsNotNone(cli_process.poll(), "shipped CLI server was not reaped")
+        self.assertFalse(root.exists(), "TLS fixture left its temporary SQLite site")
 
 
 if __name__ == "__main__":

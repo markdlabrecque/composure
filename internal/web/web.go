@@ -342,7 +342,11 @@ func Handler(repository content.Repository, port string) http.Handler {
 		}
 		mux.ServeHTTP(w, r)
 	})
-	protected := http.NewCrossOriginProtection().Handler(methodBoundary)
+	routes := adminGuard(methodBoundary)
+	if loader, ok := repository.(SessionLoader); ok {
+		routes = SessionMiddleware(loader, time.Now, routes)
+	}
+	protected := http.NewCrossOriginProtection().Handler(routes)
 	allowed := map[string]bool{net.JoinHostPort("127.0.0.1", port): true, net.JoinHostPort("localhost", port): true, net.JoinHostPort("::1", port): true}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(r.URL.Path, "/admin") {

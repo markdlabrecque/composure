@@ -694,9 +694,9 @@ func TestSignInRequestBoundaries(t *testing.T) {
 			signInAssertNoCredentialForTest(t, w)
 		})
 	}
-	// The old local prototype is not globally guarded until #81.
-	if w := signInServeForTest(f, signInRequestForTest(http.MethodGet, "/admin/pages", "")); w.Code != 200 {
-		t.Fatal("#75 unexpectedly guarded unrelated prototype routes")
+	// Unauthenticated Page routes are protected at the Handler boundary.
+	if w := signInServeForTest(f, signInRequestForTest(http.MethodGet, "/admin/pages", "")); w.Code != http.StatusSeeOther || w.Header().Get("Location") != "/admin/sign-in" {
+		t.Fatal("unauthenticated Page route did not redirect to sign-in")
 	}
 	// Secure is mandatory even when the same handler is reached over HTTP.
 	r := signInRequestForTest(http.MethodGet, "/admin/sign-in", "")

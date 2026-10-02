@@ -4,7 +4,10 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/rand"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -14,13 +17,19 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
+	"github.com/markdlabrecque/composure/internal/store"
 	_ "modernc.org/sqlite"
 )
 
 var binary, root string
+
+var adminFixtureMu sync.Mutex
+var adminFixtureSites = map[string]string{}
+var adminFixtureCookies = map[string]string{}
 
 // TestMain builds the shipped CLI once, independently of the test binary's race/CGO mode.
 func TestMain(m *testing.M) {
@@ -206,6 +215,9 @@ func serve(t *testing.T, site string) (string, func()) {
 			body, _ := io.ReadAll(resp.Body)
 			resp.Body.Close()
 			if resp.StatusCode == 200 && strings.TrimSpace(string(body)) == "ok" {
+				adminFixtureMu.Lock()
+				adminFixtureSites[url] = site
+				adminFixtureMu.Unlock()
 				return url, stop
 			}
 		}
@@ -218,6 +230,61 @@ func serve(t *testing.T, site string) (string, func()) {
 		case <-ticker.C:
 		}
 	}
+}
+
+// adminFixtureCookie creates one real persisted session per disposable site.
+// Integration HTTP requests use this controlled credential to keep earlier
+// authenticated route acceptance tests meaningful after the admin guard lands.
+func adminFixtureCookie(t *testing.T, base string) string {
+	t.Helper()
+	adminFixtureMu.Lock()
+	defer adminFixtureMu.Unlock()
+	site := adminFixtureSites[base]
+	if site == "" {
+		t.Fatalf("no site registered for integration server %q", base)
+	}
+	if credential := adminFixtureCookies[site]; credential != "" {
+		return "__Host-composure_session=" + credential
+	}
+
+	ctx := context.Background()
+	at := time.Now().UTC().Truncate(time.Millisecond)
+	repository, err := store.Open(ctx, filepath.Join(site, "composure.db"))
+	if err != nil {
+		t.Fatalf("open admin fixture store: %v", err)
+	}
+	defer repository.Close()
+	accounts, err := repository.ListAccounts(ctx)
+	if err != nil {
+		t.Fatalf("list admin fixture accounts: %v", err)
+	}
+	accountID := ""
+	for _, account := range accounts {
+		if account.State == "active" {
+			accountID = account.ID
+			break
+		}
+	}
+	if accountID == "" {
+		accountID, err = repository.CreateAccount(ctx, store.AccountDraft{
+			Email: "integration-admin@example.test", PasswordHash: "unused-integration-fixture-hash",
+			IsAdministrator: true, IsEditor: true, State: "active",
+		}, at)
+		if err != nil {
+			t.Fatalf("create admin fixture account: %v", err)
+		}
+	}
+	raw := make([]byte, 32)
+	if _, err := rand.Read(raw); err != nil {
+		t.Fatalf("create admin fixture credential: %v", err)
+	}
+	digest := sha256.Sum256(raw)
+	if _, err := repository.CreateSession(ctx, store.SessionDraft{AccountID: accountID, TokenDigest: digest[:]}, at); err != nil {
+		t.Fatalf("create admin fixture session: %v", err)
+	}
+	credential := base64.RawURLEncoding.EncodeToString(raw)
+	adminFixtureCookies[site] = credential
+	return "__Host-composure_session=" + credential
 }
 
 func request(t *testing.T, url, method, path, host string, status int) (http.Header, string) {

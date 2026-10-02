@@ -369,6 +369,7 @@ func TestPhase1EditDraftConcurrentRevision(t *testing.T) {
 				return
 			}
 			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			req.Header.Set("Cookie", adminFixtureCookie(t, base))
 			client := &http.Client{Timeout: 5 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 			resp, err := client.Do(req)
 			if err != nil {

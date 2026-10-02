@@ -29,6 +29,9 @@ func admin6HTTP(t *testing.T, base, method, path, body string, headers map[strin
 			req.Header.Set(key, value)
 		}
 	}
+	if strings.HasPrefix(path, "/admin") && path != "/admin/sign-in" && path != "/admin/static/admin.css" {
+		req.Header.Set("Cookie", adminFixtureCookie(t, base))
+	}
 	client := &http.Client{Timeout: 5 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	resp, err := client.Do(req)
 	if err != nil {
