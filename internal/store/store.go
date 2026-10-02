@@ -73,7 +73,13 @@ func Initialize(ctx context.Context, path, siteID string, at time.Time, example 
 
 // InitializeWithConfig creates a site with the validated configuration chosen
 // by init. The document becomes the site's active revision 1.
-func InitializeWithConfig(ctx context.Context, path, siteID string, at time.Time, document []byte, example *content.Snapshot) (err error) {
+func InitializeWithConfig(ctx context.Context, path, siteID string, at time.Time, document []byte, example *content.Snapshot) error {
+	return InitializeWithConfigAndAccount(ctx, path, siteID, at, document, example, nil)
+}
+
+// InitializeWithConfigAndAccount creates a fresh site and, when supplied, its
+// first administrator in the same initialization transaction.
+func InitializeWithConfigAndAccount(ctx context.Context, path, siteID string, at time.Time, document []byte, example *content.Snapshot, firstAccount *AccountDraft) (err error) {
 	db, err := connect(path)
 	if err != nil {
 		return err
@@ -141,6 +147,19 @@ func InitializeWithConfig(ctx context.Context, path, siteID string, at time.Time
 			if _, err = tx.ExecContext(ctx, s.query, s.args...); err != nil {
 				return err
 			}
+		}
+	}
+	if firstAccount != nil {
+		accountID, idErr := content.NewID(at)
+		if idErr != nil {
+			return idErr
+		}
+		_, err = tx.ExecContext(ctx, `
+			INSERT INTO accounts(id,email,password_hash,is_administrator,is_editor,state,created_at,updated_at)
+			VALUES(?,?,?,?,?,?,?,?)`, accountID, normalizeAccountEmail(firstAccount.Email), firstAccount.PasswordHash,
+			boolInt(firstAccount.IsAdministrator), boolInt(firstAccount.IsEditor), firstAccount.State, timestamp, timestamp)
+		if err != nil {
+			return err
 		}
 	}
 	if err = tx.Commit(); err != nil {

@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/markdlabrecque/composure/internal/auth"
 	"github.com/markdlabrecque/composure/internal/config"
 	"github.com/markdlabrecque/composure/internal/content"
 	"github.com/markdlabrecque/composure/internal/store"
@@ -36,16 +37,60 @@ func state(code int, format string, args ...any) error {
 
 // Init prints the plan before mutation. now supplies one timestamp for all rows.
 func Init(ctx context.Context, dir string, example, apply bool, out io.Writer, now func() time.Time) (err error) {
-	return initWithConfig(ctx, dir, config.Default, false, example, apply, out, now)
+	return initWithConfig(ctx, dir, config.Default, false, example, apply, out, now, nil)
+}
+
+// AdminSetup requests creation of the first administrator during a fresh-site
+// initialization. Password is treated as opaque input and is never rendered.
+type AdminSetup struct {
+	Email, Password string
+}
+
+func canonicalAdminEmail(email string) string {
+	canonical := []byte(email)
+	start, end := 0, len(canonical)
+	for start < end && canonical[start] == ' ' {
+		start++
+	}
+	for end > start && canonical[end-1] == ' ' {
+		end--
+	}
+	canonical = canonical[start:end]
+	for i, char := range canonical {
+		if char >= 'A' && char <= 'Z' {
+			canonical[i] = char + ('a' - 'A')
+		}
+	}
+	return string(canonical)
+}
+
+// InitWithAdmin preserves the legacy default configuration while creating the
+// first administrator as part of a real apply.
+func InitWithAdmin(ctx context.Context, dir string, example, apply bool, admin AdminSetup, out io.Writer, now func() time.Time) error {
+	return initWithConfig(ctx, dir, config.Default, false, example, apply, out, now, &admin)
 }
 
 // InitWithConfig validates the selected document and optional fixed example
 // before inspecting, printing, or mutating the destination.
 func InitWithConfig(ctx context.Context, dir string, rawConfig []byte, example, apply bool, out io.Writer, now func() time.Time) (err error) {
-	return initWithConfig(ctx, dir, rawConfig, true, example, apply, out, now)
+	return initWithConfig(ctx, dir, rawConfig, true, example, apply, out, now, nil)
 }
 
-func initWithConfig(ctx context.Context, dir string, rawConfig []byte, explicitConfig, example, apply bool, out io.Writer, now func() time.Time) (err error) {
+// InitWithConfigAndAdmin initializes a fresh site and its first administrator.
+func InitWithConfigAndAdmin(ctx context.Context, dir string, rawConfig []byte, example, apply bool, admin AdminSetup, out io.Writer, now func() time.Time) error {
+	return initWithConfig(ctx, dir, rawConfig, true, example, apply, out, now, &admin)
+}
+
+func initWithConfig(ctx context.Context, dir string, rawConfig []byte, explicitConfig, example, apply bool, out io.Writer, now func() time.Time, admin *AdminSetup) (err error) {
+	if admin != nil {
+		admin.Email = canonicalAdminEmail(admin.Email)
+		if admin.Email == "" {
+			return state(3, "administrator email must be non-empty after canonicalization")
+		}
+		if admin.Password == "" {
+			return state(3, "COMPOSURE_ADMIN_PASSWORD must be set and non-empty when --admin-email is supplied")
+		}
+	}
 	document, err := config.Validate(rawConfig)
 	if err != nil {
 		var validation *config.ValidationError
@@ -102,6 +147,17 @@ func initWithConfig(ctx context.Context, dir string, rawConfig []byte, explicitC
 	if !apply {
 		_, err = fmt.Fprintln(out, "No changes made. Re-run with --apply to initialize.")
 		return err
+	}
+	var firstAccount *store.AccountDraft
+	if admin != nil {
+		passwordHash, hashErr := auth.Hash(admin.Password)
+		if hashErr != nil {
+			return fmt.Errorf("cannot hash first administrator password")
+		}
+		firstAccount = &store.AccountDraft{
+			Email: admin.Email, PasswordHash: passwordHash,
+			IsAdministrator: true, IsEditor: true, State: "active",
+		}
 	}
 	created := false
 	if !existing {
@@ -161,7 +217,7 @@ func initWithConfig(ctx context.Context, dir string, rawConfig []byte, explicitC
 			return err
 		}
 	}
-	if err = store.InitializeWithConfig(ctx, tempPath, siteID, at, canonical, seedPage); err != nil {
+	if err = store.InitializeWithConfigAndAccount(ctx, tempPath, siteID, at, canonical, seedPage, firstAccount); err != nil {
 		return err
 	}
 	// Store closed all connections and checkpointed WAL before publication.

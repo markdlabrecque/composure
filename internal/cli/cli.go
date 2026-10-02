@@ -51,10 +51,12 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	var example, apply *bool
 	var address *string
 	var configFile *string
+	var adminEmail *string
 	if command == "init" {
 		example = flags.Bool("example", false, "add one published example Page")
 		apply = flags.Bool("apply", false, "apply the initialization plan")
 		configFile = flags.String("config", "", "Page configuration file")
+		adminEmail = flags.String("admin-email", "", "create the first administrator with this email")
 	} else {
 		address = flags.String("addr", "127.0.0.1:8080", "loopback listen address")
 	}
@@ -66,14 +68,31 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	}
 	ctx := context.Background()
 	if command == "init" {
-		configSupplied := false
+		configSupplied, adminEmailSupplied := false, false
 		flags.Visit(func(parsed *flag.Flag) {
-			if parsed.Name == "config" {
+			switch parsed.Name {
+			case "config":
 				configSupplied = true
+			case "admin-email":
+				adminEmailSupplied = true
 			}
 		})
+		var admin site.AdminSetup
+		if adminEmailSupplied {
+			password, ok := os.LookupEnv("COMPOSURE_ADMIN_PASSWORD")
+			if !ok || password == "" {
+				return fail(3, fmt.Errorf("COMPOSURE_ADMIN_PASSWORD must be set and non-empty when --admin-email is supplied"))
+			}
+			admin = site.AdminSetup{Email: *adminEmail, Password: password}
+		}
 		if !configSupplied {
-			if err := site.Init(ctx, *dir, *example, *apply, stdout, time.Now); err != nil {
+			var err error
+			if adminEmailSupplied {
+				err = site.InitWithAdmin(ctx, *dir, *example, *apply, admin, stdout, time.Now)
+			} else {
+				err = site.Init(ctx, *dir, *example, *apply, stdout, time.Now)
+			}
+			if err != nil {
 				return fail(exitCode(err), err)
 			}
 			return 0
@@ -89,7 +108,12 @@ func Run(args []string, stdout, stderr io.Writer) int {
 			}
 			return fail(3, err)
 		}
-		if err := site.InitWithConfig(ctx, *dir, selected, *example, *apply, stdout, time.Now); err != nil {
+		if adminEmailSupplied {
+			err = site.InitWithConfigAndAdmin(ctx, *dir, selected, *example, *apply, admin, stdout, time.Now)
+		} else {
+			err = site.InitWithConfig(ctx, *dir, selected, *example, *apply, stdout, time.Now)
+		}
+		if err != nil {
 			return fail(exitCode(err), err)
 		}
 		return 0
