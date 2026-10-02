@@ -27,9 +27,9 @@ func isAdminPath(path string) bool {
 
 func isPublicAdminRoute(r *http.Request) bool {
 	switch {
-	case r.URL.Path == "/admin/sign-in" && (r.Method == http.MethodGet || r.Method == http.MethodPost):
+	case r.URL.Path == "/admin/sign-in" && (r.Method == http.MethodGet || r.Method == http.MethodHead || r.Method == http.MethodPost):
 		return true
-	case r.URL.Path == "/admin/static/admin.css" && r.Method == http.MethodGet:
+	case r.URL.Path == "/admin/static/admin.css" && (r.Method == http.MethodGet || r.Method == http.MethodHead):
 		return true
 	default:
 		return false
