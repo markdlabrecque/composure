@@ -16,7 +16,9 @@ The default limits are 25 MiB globally, 10 MiB for images, and 25 MiB for docume
 
 The effective limit is the smaller of the global limit and the matching image or document limit. A file at the limit is accepted; a file one byte larger is rejected. For example, with defaults an image of 10,485,760 bytes is accepted and one of 10,485,761 bytes is rejected. If the global limit is 8 MiB and the image limit is 12 MiB, the effective image limit is 8 MiB. If the global limit is 30 MiB and the document limit is 20 MiB, the effective document limit is 20 MiB.
 
-Site configuration may override all three limits. The configuration property names and migration are not defined here; do not add guessed keys to the closed Phase 1 format.
+An optional field-specific limit may lower the effective global/category limit. It cannot raise that ceiling: an absent field limit has no effect, and an equal or larger field limit leaves the global/category limit in force. The size validator takes explicit global, image, and document limits plus this optional field limit; it does not load or configure them. Site configuration may override the global/category limits only after an explicitly versioned configuration change. The property names and migration are not defined here; do not add guessed keys to the closed Phase 1 format.
+
+The validator rejects negative file sizes, unsupported kinds, and non-positive supplied limits as invalid input. Limits and file sizes are byte counts represented as signed 64-bit integers; comparisons do not calculate derived sizes and remain safe at the maximum representable value.
 
 ## Images
 
