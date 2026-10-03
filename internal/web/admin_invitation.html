@@ -1,0 +1,7 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="stylesheet" href="/admin/static/admin.css"><title>Invite a user</title></head><body>
+<main><p><a href="/admin">Admin</a></p><h1>Invite a user</h1>
+{{if .Error}}<p role="status">{{.Error}}</p>{{end}}
+<form method="post" action="/admin/invitations"><input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+<div><label for="invitation-email">Email</label><input id="invitation-email" type="email" name="email" value="{{.Email}}" required></div>
+<button type="submit">Issue invitation</button></form></main></body></html>

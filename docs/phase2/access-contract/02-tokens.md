@@ -25,7 +25,9 @@ Generate each value with a cryptographically secure random source so it is ungue
 
 Consume the token in the same database transaction as the operation it authorizes: create the invited account or change the account's password. The transaction must claim an unused, unexpired token atomically and commit the state change and `used_at` together. If the state change fails, roll back token consumption. Concurrent attempts may produce at most one successful operation; later or concurrent reuse must fail. Use the injected UTC clock for issuance, expiry checks, and `used_at`.
 
-The PRD does not set a numeric token lifetime, random-value length, or digest algorithm. Those values remain open for the later implementation and security review; this contract does not choose them. Implementations must set `expires_at` when issuing each token and enforce it at use time.
+The PRD does not set a random-value length or digest algorithm. Those values remain open for the later implementation and security review. The approved lifetimes below define `expires_at` for each token kind.
+
+The approved invitation lifetime is seven days; the approved password-reset lifetime is one hour. Issue both kinds of tokens using the injected server clock, and check expiry against that clock when the token is used.
 
 ## Proposed SQL
 

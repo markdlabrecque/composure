@@ -79,6 +79,12 @@ func ResolveLoopback(ctx context.Context, address string) (string, error) {
 }
 
 func Handler(repository content.Repository, port string) http.Handler {
+	return HandlerWithClock(repository, port, time.Now)
+}
+
+// HandlerWithClock constructs the server handler with an explicit server clock.
+// The clock is shared with routes whose persisted values depend on server time.
+func HandlerWithClock(repository content.Repository, port string, now func() time.Time) http.Handler {
 	mux := http.NewServeMux()
 	handleAdminPost := func(pattern string, handler http.HandlerFunc) {
 		mux.Handle(pattern, authenticatedPost(handler))
@@ -88,6 +94,7 @@ func Handler(repository content.Repository, port string) http.Handler {
 		fmt.Fprintln(w, "ok")
 	})
 	registerSignInRoutes(mux, repository)
+	registerInvitationRoutes(mux, repository, handleAdminPost, now)
 	handleAdminPost("POST /admin/sign-out", func(w http.ResponseWriter, r *http.Request) { serveSignOut(w, r, repository) })
 	mux.HandleFunc("GET /admin/static/admin.css", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/css; charset=utf-8")
