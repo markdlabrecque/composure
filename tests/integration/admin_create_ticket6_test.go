@@ -250,6 +250,7 @@ func TestAdminCreateTicket6DraftPersistenceAndMetadata(t *testing.T) {
 	db := openDB(t, site)
 	before := admin6State(t, db)
 	base, stop := serve(t, site)
+	accountID := adminFixtureAccountID(t, base)
 	values := admin6Values()
 	for _, key := range []string{"id", "type_id", "draft_revision", "created_at", "updated_at", "created_by", "updated_by", "published_snapshot_id", "config_revision", "config", "publish", "unknown"} {
 		values.Set(key, "attacker")
@@ -262,7 +263,7 @@ func TestAdminCreateTicket6DraftPersistenceAndMetadata(t *testing.T) {
 	if err := db.QueryRow(`SELECT id,type_id,title,path,fields,draft_revision,created_at,updated_at,created_by,updated_by,published_snapshot_id FROM items WHERE path='/about-us'`).Scan(&id, &typ, &title, &path, &fields, &rev, &created, &updated, &creator, &updater, &published); err != nil {
 		t.Fatalf("valid create did not persist draft: %v", err)
 	}
-	if !uuid7.MatchString(id) || typ != "page" || rev != 1 || published.Valid || creator != "local-prototype" || updater != creator || created != updated || !timestamp.MatchString(created) {
+	if !uuid7.MatchString(id) || typ != "page" || rev != 1 || published.Valid || creator != accountID || updater != accountID || created != updated || !timestamp.MatchString(created) {
 		t.Errorf("invalid server metadata: id=%s type=%s rev=%d published=%v actors=%s/%s times=%s/%s", id, typ, rev, published, creator, updater, created, updated)
 	}
 	if title != values.Get("title") || path != "/about-us" {

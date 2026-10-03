@@ -30,6 +30,7 @@ var binary, root string
 var adminFixtureMu sync.Mutex
 var adminFixtureSites = map[string]string{}
 var adminFixtureCookies = map[string]string{}
+var adminFixtureAccountIDs = map[string]string{}
 
 // TestMain builds the shipped CLI once, independently of the test binary's race/CGO mode.
 func TestMain(m *testing.M) {
@@ -284,7 +285,20 @@ func adminFixtureCookie(t *testing.T, base string) string {
 	}
 	credential := base64.RawURLEncoding.EncodeToString(raw)
 	adminFixtureCookies[site] = credential
+	adminFixtureAccountIDs[site] = accountID
 	return "__Host-composure_session=" + credential
+}
+
+func adminFixtureAccountID(t *testing.T, base string) string {
+	t.Helper()
+	adminFixtureCookie(t, base)
+	adminFixtureMu.Lock()
+	defer adminFixtureMu.Unlock()
+	accountID := adminFixtureAccountIDs[adminFixtureSites[base]]
+	if accountID == "" {
+		t.Fatalf("no account registered for integration server %q", base)
+	}
+	return accountID
 }
 
 func request(t *testing.T, url, method, path, host string, status int) (http.Header, string) {

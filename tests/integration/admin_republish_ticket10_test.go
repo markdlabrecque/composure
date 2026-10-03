@@ -20,7 +20,7 @@ func admin10DraftRow(t *testing.T, db *sql.DB, id string) string {
 	return scalar[string](t, db, `SELECT json_array(id,type_id,title,path,fields,draft_revision,created_at,created_by,updated_at,updated_by) FROM items WHERE id='`+id+`'`)
 }
 
-func admin10Snapshot(t *testing.T, db *sql.DB, id string, seq, revision, configRevision int, title, fields string) string {
+func admin10Snapshot(t *testing.T, db *sql.DB, id string, seq, revision, configRevision int, title, fields, expectedActor string) string {
 	t.Helper()
 	var sid, item, typ, gotTitle, path, gotFields, at, actor string
 	var gotSeq, source, cfg int
@@ -28,7 +28,7 @@ func admin10Snapshot(t *testing.T, db *sql.DB, id string, seq, revision, configR
 	if err != nil {
 		t.Fatalf("missing republish snapshot seq %d: %v", seq, err)
 	}
-	if !uuid7.MatchString(sid) || sid == id || item != id || typ != "page" || gotSeq != seq || source != revision || cfg != configRevision || actor != "local-prototype" || !timestamp.MatchString(at) {
+	if !uuid7.MatchString(sid) || sid == id || item != id || typ != "page" || gotSeq != seq || source != revision || cfg != configRevision || actor != expectedActor || !timestamp.MatchString(at) {
 		t.Errorf("wrong snapshot metadata: %s", admin10SnapshotRow(t, db, id, seq))
 	}
 	if _, err := time.Parse("2006-01-02T15:04:05.000Z", at); err != nil {
@@ -50,6 +50,7 @@ func TestPhase1RepublishIsolation(t *testing.T) {
 	site := initSite(t, false)
 	db := openDB(t, site)
 	base, stop := serve(t, site)
+	accountID := adminFixtureAccountID(t, base)
 	id := admin7Create(t, base, "A <script>title</script>", "/republish")
 	other := admin7Create(t, base, "Other published Page", "/other")
 	admin9Publish(t, base, id, 1, 303)
@@ -141,7 +142,7 @@ func TestPhase1RepublishIsolation(t *testing.T) {
 	admin6Unchanged(t, db, before)
 
 	admin9Publish(t, base, id, 3, 303)
-	sidB := admin10Snapshot(t, db, id, 2, 3, 7, titleB, rawB)
+	sidB := admin10Snapshot(t, db, id, 2, 3, 7, titleB, rawB, accountID)
 	b := admin10SnapshotRow(t, db, id, 2)
 	_, publicB := admin6HTTP(t, base, "GET", "/republish", "", nil, 200)
 	_, previewB := admin6HTTP(t, base, "GET", "/admin/pages/"+id+"/preview", "", nil, 200)
@@ -162,7 +163,7 @@ func TestPhase1RepublishIsolation(t *testing.T) {
 		t.Error("restart changed snapshot B")
 	}
 	admin9Publish(t, base, id, 3, 303)
-	sidC := admin10Snapshot(t, db, id, 3, 3, 7, titleB, rawB)
+	sidC := admin10Snapshot(t, db, id, 3, 3, 7, titleB, rawB, accountID)
 	if sidC == sidB {
 		t.Error("unchanged publication reused snapshot ID")
 	}
