@@ -30,7 +30,18 @@ Decode and re-encode accepted images without EXIF or GPS metadata. Decode WebP w
 
 Treat DOCX as an untrusted ZIP archive. Inspect and validate it without extracting files to disk. Accept at most 1,000 entries, including directory entries; at most 100 MiB of total expanded data; and at most 25 MiB for any one entry. Accept an expanded-to-compressed ratio of at most 100:1 for each entry and for the archive overall. These limits are inclusive.
 
-Accept only stored and deflated entries. Reject encrypted entries, macro-enabled content, symbolic links, duplicate paths, unsafe paths, malformed or truncated archives, inconsistent size metadata, and entries whose data or CRC cannot be fully read and verified. Safe directory entries with a terminal slash are allowed only when they have consistent directory metadata and zero expanded data; they count toward the entry limit. Reject unsafe directories and directory/file entries that identify the same path. Require valid OOXML content types, one internal officeDocument relationship to the main part, and a well-formed Word main document. Bound actual reads by the entry and archive limits and check size arithmetic for overflow. Never execute macros or extract archive entries to disk.
+Accept only stored and deflated entries. Reject encrypted entries, macro-enabled content, symbolic links, duplicate paths, unsafe paths, malformed or truncated archives, inconsistent size metadata, and entries whose data or CRC cannot be fully read and verified. Safe directory entries with a terminal slash are allowed only when they have consistent directory metadata and no compressed or expanded member data; they count toward the entry limit. Reject unsafe directories, file/directory entries that identify the same path, and files that conflict with child paths. Require valid OOXML content types, one internal officeDocument relationship to the main part, and a well-formed Word main document. Bound actual reads by the entry and archive limits and check size arithmetic for overflow. Never execute macros or extract archive entries to disk.
+
+The DOCX validator accepts canonical single-disk ZIP archives with standard
+32-bit ZIP records. Multi-disk archives, ZIP64 containers or members, and
+archives with prepended data are unsupported and rejected. It checks EOCD and
+central-directory counts and bounds before allocating member metadata, then
+verifies each local header and optional data descriptor against its central
+record. It rejects overlapping member ranges and checks CRC-32 for every
+expanded entry. Macro checks include content-type Default and Override
+declarations and package relationship types, including renamed VBA targets.
+This is structural OOXML validation: it does not validate the full
+WordprocessingML schema or document semantics.
 
 ## Names, references, and recovery
 
