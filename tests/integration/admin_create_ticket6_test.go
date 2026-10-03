@@ -18,6 +18,15 @@ import (
 // These acceptance tests use the release binary and disposable real SQLite sites.
 func admin6HTTP(t *testing.T, base, method, path, body string, headers map[string]string, want int) (http.Header, string) {
 	t.Helper()
+	protected := strings.HasPrefix(path, "/admin") && path != "/admin/sign-in" && path != "/admin/static/admin.css"
+	if protected && method == http.MethodPost && strings.HasPrefix(headers["Content-Type"], "application/x-www-form-urlencoded") {
+		values, err := url.ParseQuery(body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		values.Set("csrf_token", adminFixtureCSRFToken(t, base))
+		body = values.Encode()
+	}
 	req, err := http.NewRequest(method, base+path, strings.NewReader(body))
 	if err != nil {
 		t.Fatal(err)
@@ -29,7 +38,7 @@ func admin6HTTP(t *testing.T, base, method, path, body string, headers map[strin
 			req.Header.Set(key, value)
 		}
 	}
-	if strings.HasPrefix(path, "/admin") && path != "/admin/sign-in" && path != "/admin/static/admin.css" {
+	if protected {
 		req.Header.Set("Cookie", adminFixtureCookie(t, base))
 	}
 	client := &http.Client{Timeout: 5 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}

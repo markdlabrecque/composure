@@ -24,8 +24,9 @@ type SessionLoader interface {
 type sessionContextKey struct{}
 
 type authenticatedSession struct {
-	session store.Session
-	account store.Account
+	session   store.Session
+	account   store.Account
+	csrfToken string
 }
 
 // SessionMiddleware loads valid session state into a child request context. It
@@ -77,7 +78,7 @@ func SessionMiddleware(loader SessionLoader, now func() time.Time, next http.Han
 			return
 		}
 
-		state := authenticatedSession{session: session, account: account}
+		state := authenticatedSession{session: session, account: account, csrfToken: authenticatedCSRFToken(raw)}
 		ctx := context.WithValue(r.Context(), sessionContextKey{}, state)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
