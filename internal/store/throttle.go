@@ -24,6 +24,11 @@ type Throttle struct {
 	worker   *storeWorker
 }
 
+// NewThrottle constructs a throttle backed by this store.
+func (s *Store) NewThrottle(capacity int, options ...ThrottleOption) (*Throttle, error) {
+	return NewThrottle(s, capacity, options...)
+}
+
 // NewThrottle constructs a throttle whose capacity bounds active subject rows
 // and starts its idle-counter maintenance worker.
 func NewThrottle(store *Store, capacity int, options ...ThrottleOption) (*Throttle, error) {

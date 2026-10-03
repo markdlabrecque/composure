@@ -19,6 +19,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"regexp"
@@ -61,6 +62,10 @@ func (s *signInRepositoryForTest) CreateSession(ctx context.Context, draft store
 		return "", s.writeErr
 	}
 	return s.Store.CreateSession(ctx, draft, at)
+}
+
+func (s *signInRepositoryForTest) NewThrottle(capacity int, options ...store.ThrottleOption) (*store.Throttle, error) {
+	return store.NewThrottle(s.Store, capacity, options...)
 }
 
 type signInFixtureForTest struct {
@@ -241,6 +246,36 @@ func signInAssertUnchangedForTest(t *testing.T, f signInFixtureForTest, before m
 	t.Helper()
 	if len(f.repo.writes) != writes || !reflect.DeepEqual(before, signInDatabaseBytesForTest(t, f.path)) {
 		t.Fatal("rejected request or safe form read mutated SQLite")
+	}
+}
+
+type signInApplicationStateForTest string
+
+func signInApplicationStateSnapshotForTest(t *testing.T, f signInFixtureForTest) signInApplicationStateForTest {
+	t.Helper()
+	command := exec.Command("go", "test", "./internal/store", "-run", "^TestSignInLogicalSnapshotHelper$", "-count=1", "-v")
+	command.Dir = filepath.Join("..", "..")
+	command.Env = append(os.Environ(), "COMPOSURE_TEST_SIGNIN_SNAPSHOT_DB="+f.path)
+	output, err := command.CombinedOutput()
+	if err != nil {
+		t.Fatalf("test-only logical database snapshot failed: %v\n%s", err, output)
+	}
+	const marker = "SIGNIN_LOGICAL_SNAPSHOT="
+	start := strings.Index(string(output), marker)
+	if start < 0 {
+		t.Fatalf("test-only logical database snapshot omitted digest:\n%s", output)
+	}
+	value := string(output)[start+len(marker):]
+	if end := strings.IndexByte(value, '\n'); end >= 0 {
+		value = value[:end]
+	}
+	return signInApplicationStateForTest(strings.TrimSpace(value))
+}
+
+func signInAssertApplicationStateForTest(t *testing.T, f signInFixtureForTest, before signInApplicationStateForTest, writes int) {
+	t.Helper()
+	if len(f.repo.writes) != writes || !reflect.DeepEqual(before, signInApplicationStateSnapshotForTest(t, f)) {
+		t.Fatal("failed sign-in mutated account, session or content state")
 	}
 }
 
@@ -521,17 +556,6 @@ func TestSignInValidCredentialsCreateFreshPersistedSessions(t *testing.T) {
 }
 
 func TestSignInInvalidCredentialsAreIndistinguishableAndExact(t *testing.T) {
-	f := newSignInFixtureForTest(t)
-	ctx := context.Background()
-	for _, draft := range []store.AccountDraft{
-		{Email: "inactive@example.test", PasswordHash: f.hash, IsEditor: true, State: "deactivated"},
-		{Email: "malformed@example.test", PasswordHash: "private-test-invalid-hash", IsEditor: true, State: "active"},
-		{Email: "café@example.test", PasswordHash: f.hash, IsEditor: true, State: "active"},
-	} {
-		if _, err := f.repo.CreateAccount(ctx, draft, f.at); err != nil {
-			t.Fatal(err)
-		}
-	}
 	cases := []struct{ name, email, password string }{
 		{"unknown", "unknown@example.test", signInOpaquePassword},
 		{"wrong", "editor@example.test", "private-test-wrong-password"},
@@ -550,10 +574,20 @@ func TestSignInInvalidCredentialsAreIndistinguishableAndExact(t *testing.T) {
 	var status int
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			f := newSignInFixtureForTest(t)
+			for _, draft := range []store.AccountDraft{
+				{Email: "inactive@example.test", PasswordHash: f.hash, IsEditor: true, State: "deactivated"},
+				{Email: "malformed@example.test", PasswordHash: "private-test-invalid-hash", IsEditor: true, State: "active"},
+				{Email: "café@example.test", PasswordHash: f.hash, IsEditor: true, State: "active"},
+			} {
+				if _, err := f.repo.CreateAccount(context.Background(), draft, f.at); err != nil {
+					t.Fatal(err)
+				}
+			}
 			values := signInValuesForTest(t)
 			values.Set("email", tc.email)
 			values.Set("password", tc.password)
-			before := signInDatabaseBytesForTest(t, f.path)
+			before := signInApplicationStateSnapshotForTest(t, f)
 			w := signInPostForTest(t, f, values)
 			if w.Code < 200 || w.Code >= 500 || (w.Code >= 300 && w.Code < 400) || w.Code == 404 || w.Code == 405 {
 				t.Fatalf("invalid credentials returned %d, want a sign-in error screen", w.Code)
@@ -569,15 +603,46 @@ func TestSignInInvalidCredentialsAreIndistinguishableAndExact(t *testing.T) {
 			signInAssertNoCredentialForTest(t, w)
 			signInAssertNoSecretsForTest(t, w, signInOpaquePassword, tc.password, f.hash, signInNonceForTest(), "private-test-invalid-hash")
 			signInAssertLogsForTest(t, logs, signInOpaquePassword, tc.password, f.hash, signInNonceForTest(), values.Get("csrf_token"))
-			signInAssertUnchangedForTest(t, f, before, 0)
+			signInAssertApplicationStateForTest(t, f, before, 0)
 		})
 	}
 	// ASCII case folding must not fold the Unicode local-part itself.
+	f := newSignInFixtureForTest(t)
+	if _, err := f.repo.CreateAccount(context.Background(), store.AccountDraft{Email: "café@example.test", PasswordHash: f.hash, IsEditor: true, State: "active"}, f.at); err != nil {
+		t.Fatal(err)
+	}
 	values := signInValuesForTest(t)
 	values.Set("email", " CAFé@EXAMPLE.TEST ")
 	if w := signInPostForTest(t, f, values); w.Code != 303 {
 		t.Fatalf("ASCII-only canonicalization of Unicode email returned %d, want 303", w.Code)
 	}
+}
+
+func TestSignInThrottleRejectionDoesNotMutateDatabase(t *testing.T) {
+	f := newSignInFixtureForTest(t)
+	at := time.Date(2026, time.October, 3, 17, 0, 0, 0, time.UTC)
+	verifier := &signInVerifierForTest{}
+	deps := signInDependencies{now: func() time.Time { return at }, verify: verifier.verify}
+	values := signInValuesForTest(t)
+	values.Set("password", "private-test-wrong-password")
+	for attempt := 1; attempt <= 6; attempt++ {
+		remote := net.JoinHostPort("192.0.2."+strconv.Itoa(attempt), "8443")
+		if w := signInPostWithDependenciesForTest(t, f, values, remote, deps); w.Code != http.StatusUnauthorized {
+			t.Fatalf("admitted attempt %d returned %d, want 401", attempt, w.Code)
+		}
+	}
+	if len(verifier.calls) != 6 {
+		t.Fatalf("verifier called %d times for six admitted attempts", len(verifier.calls))
+	}
+	before := signInDatabaseBytesForTest(t, f.path)
+	w := signInPostWithDependenciesForTest(t, f, values, "198.51.100.9:8443", deps)
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("throttle rejection returned %d, want 401", w.Code)
+	}
+	if len(verifier.calls) != 6 {
+		t.Fatal("throttle rejection reached password verification")
+	}
+	signInAssertUnchangedForTest(t, f, before, 0)
 }
 
 func TestSignInMissingAndDuplicateCredentialFields(t *testing.T) {
@@ -736,7 +801,8 @@ func TestSignInEntropyAndStoreFailuresAreAtomicAndRedacted(t *testing.T) {
 		{name: "session-write-error", writeFailure: true, method: http.MethodPost},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			before := signInDatabaseBytesForTest(t, f.path)
+			databaseBefore := signInDatabaseBytesForTest(t, f.path)
+			stateBefore := signInApplicationStateSnapshotForTest(t, f)
 			writes := len(f.repo.writes)
 			private := errors.New(signInOpaquePassword + " " + f.hash + " " + signInNonceForTest() + " " + signInTokenForTest(t, signInNonceForTest(), "preauth"))
 			if tc.lookupFailure {
@@ -764,8 +830,10 @@ func TestSignInEntropyAndStoreFailuresAreAtomicAndRedacted(t *testing.T) {
 			if tc.writeFailure {
 				wantWrites++
 			}
-			if len(f.repo.writes) != wantWrites || !reflect.DeepEqual(before, signInDatabaseBytesForTest(t, f.path)) {
-				t.Fatal("operational failure left a session row or attempted a write before entropy was complete")
+			if tc.method == http.MethodGet {
+				signInAssertUnchangedForTest(t, f, databaseBefore, wantWrites)
+			} else {
+				signInAssertApplicationStateForTest(t, f, stateBefore, wantWrites)
 			}
 			signInAssertNoCredentialForTest(t, w)
 			if tc.method == http.MethodGet && len(w.Result().Cookies()) != 0 {

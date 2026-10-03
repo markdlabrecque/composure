@@ -1,6 +1,7 @@
 package web
 
 import (
+	"bytes"
 	"context"
 	"crypto/hmac"
 	"crypto/rand"
@@ -8,11 +9,14 @@ import (
 	"crypto/subtle"
 	"embed"
 	"encoding/base64"
+	"encoding/binary"
 	"errors"
 	"html/template"
 	"io"
 	"mime"
+	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"strings"
 	"time"
@@ -23,6 +27,8 @@ import (
 )
 
 const signInFormBodyLimit = 1 << 20
+const signInThrottleNamespace = "signin"
+const signInThrottleCapacity = 8192
 const signInDummyPasswordHash = "$argon2id$v=19$m=65536,t=3,p=4$AAAAAAAAAAAAAAAAAAAAAA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
 
 //go:embed admin_signin.html
@@ -41,15 +47,32 @@ type signInPageData struct {
 	Error bool
 }
 
+type signInDependencies struct {
+	now    func() time.Time
+	verify func(password, encoded string) (bool, error)
+}
+
+type signInThrottleContextKey struct{}
+
+type signInThrottleProvider interface {
+	NewThrottle(capacity int, options ...store.ThrottleOption) (*store.Throttle, error)
+}
+
 func registerSignInRoutes(mux *http.ServeMux, repository content.Repository) {
+	var limiter *store.Throttle
+	if provider, ok := repository.(signInThrottleProvider); ok {
+		limiter, _ = provider.NewThrottle(signInThrottleCapacity)
+	}
 	mux.HandleFunc("GET /admin/sign-in", func(w http.ResponseWriter, r *http.Request) {
 		serveSignInForm(w, r)
 	})
 	mux.HandleFunc("POST /admin/sign-in", func(w http.ResponseWriter, r *http.Request) {
+		if limiter != nil {
+			r = r.WithContext(context.WithValue(r.Context(), signInThrottleContextKey{}, limiter))
+		}
 		serveSignInPost(w, r, repository)
 	})
 }
-
 func serveSignInForm(w http.ResponseWriter, r *http.Request) {
 	session, sessionCount, sessionMalformed := securityCookie(r, sessionCookieName)
 	if sessionMalformed || sessionCount > 1 || (sessionCount == 1 && !validSignInCredential(session)) {
@@ -76,6 +99,16 @@ func serveSignInForm(w http.ResponseWriter, r *http.Request) {
 }
 
 func serveSignInPost(w http.ResponseWriter, r *http.Request, repository content.Repository) {
+	serveSignInPostWithDependencies(w, r, repository, signInDependencies{now: time.Now, verify: auth.Verify})
+}
+
+func serveSignInPostWithDependencies(w http.ResponseWriter, r *http.Request, repository content.Repository, deps signInDependencies) {
+	if deps.now == nil {
+		deps.now = time.Now
+	}
+	if deps.verify == nil {
+		deps.verify = auth.Verify
+	}
 	mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
 	if err != nil || !strings.EqualFold(mediaType, "application/x-www-form-urlencoded") {
 		http.Error(w, "Form must use application/x-www-form-urlencoded.", http.StatusUnsupportedMediaType)
@@ -130,20 +163,73 @@ func serveSignInPost(w http.ResponseWriter, r *http.Request, repository content.
 		http.Error(w, "Sign-in is temporarily unavailable.", http.StatusInternalServerError)
 		return
 	}
-	account, lookupErr := repo.GetAccountByEmail(r.Context(), canonicalSignInEmail(emails[0]))
+	remoteHost, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		http.Error(w, "Sign-in is temporarily unavailable.", http.StatusInternalServerError)
+		return
+	}
+	clientIP, err := netip.ParseAddr(remoteHost)
+	if err != nil {
+		http.Error(w, "Sign-in is temporarily unavailable.", http.StatusInternalServerError)
+		return
+	}
+	clientIP = clientIP.Unmap()
+	canonicalEmail := canonicalSignInEmail(emails[0])
+	accountDigest := signInThrottleDigest("signin", 0x02, []byte(canonicalEmail))
+	ipTag := byte(0x04)
+	if clientIP.Is4() {
+		ipTag = 0x03
+	}
+	ipBytes := clientIP.AsSlice()
+	ipDigest := signInThrottleDigest("signin", ipTag, ipBytes)
+	limiter, _ := r.Context().Value(signInThrottleContextKey{}).(*store.Throttle)
+	var limiterCleanup func()
+	if limiter == nil {
+		if provider, ok := repository.(signInThrottleProvider); ok {
+			owner, cancel := context.WithCancel(r.Context())
+			limiter, err = provider.NewThrottle(signInThrottleCapacity, store.WithThrottleMaintenance(owner, nil))
+			if err != nil {
+				cancel()
+			} else {
+				limiterCleanup = func() {
+					cancel()
+					<-limiter.MaintenanceDone()
+				}
+			}
+		}
+	}
+	if limiterCleanup != nil {
+		defer limiterCleanup()
+	}
+	if limiter == nil || err != nil {
+		http.Error(w, "Sign-in is temporarily unavailable.", http.StatusInternalServerError)
+		return
+	}
+	accountKey := store.AccountThrottleDigest(accountDigest)
+	ipKey := store.IPThrottleDigest(ipDigest)
+	admitted, err := limiter.Admit(r.Context(), signInThrottleNamespace, accountKey, ipKey, deps.now())
+	if err != nil {
+		http.Error(w, "Sign-in is temporarily unavailable.", http.StatusInternalServerError)
+		return
+	}
+	if !admitted {
+		writeSignInPage(w, http.StatusUnauthorized, signInPageData{Token: retryToken, Error: true})
+		return
+	}
+	account, lookupErr := repo.GetAccountByEmail(r.Context(), canonicalEmail)
 	if errors.Is(lookupErr, content.ErrNotFound) {
-		_, _ = auth.Verify(passwords[0], signInDummyPasswordHash)
+		_, _ = deps.verify(passwords[0], signInDummyPasswordHash)
 		writeSignInPage(w, http.StatusUnauthorized, signInPageData{Token: retryToken, Error: true})
 		return
 	}
 	if lookupErr != nil {
-		_, _ = auth.Verify(passwords[0], signInDummyPasswordHash)
+		_, _ = deps.verify(passwords[0], signInDummyPasswordHash)
 		writeSignInPage(w, http.StatusUnauthorized, signInPageData{Error: true})
 		return
 	}
-	verified, verifyErr := auth.Verify(passwords[0], account.PasswordHash)
+	verified, verifyErr := deps.verify(passwords[0], account.PasswordHash)
 	if verifyErr != nil {
-		verified, _ = auth.Verify(passwords[0], signInDummyPasswordHash)
+		verified, _ = deps.verify(passwords[0], signInDummyPasswordHash)
 	}
 	if !verified || account.State != "active" {
 		writeSignInPage(w, http.StatusUnauthorized, signInPageData{Token: retryToken, Error: true})
@@ -157,7 +243,7 @@ func serveSignInPost(w http.ResponseWriter, r *http.Request, repository content.
 	}
 	credential := base64.RawURLEncoding.EncodeToString(rawCredential)
 	digest := sha256.Sum256(rawCredential)
-	createdAt := time.Now().UTC()
+	createdAt := deps.now().UTC()
 	if _, err := repo.CreateSession(r.Context(), store.SessionDraft{AccountID: account.ID, TokenDigest: digest[:]}, createdAt); err != nil {
 		http.Error(w, "Sign-in is temporarily unavailable.", http.StatusInternalServerError)
 		return
@@ -166,6 +252,17 @@ func serveSignInPost(w http.ResponseWriter, r *http.Request, repository content.
 	clearPreAuthNonceCookie(w)
 	w.Header().Set("Cache-Control", "no-store")
 	http.Redirect(w, r, "/admin", http.StatusSeeOther)
+}
+
+func signInThrottleDigest(namespace string, tag byte, subject []byte) [32]byte {
+	var encoded bytes.Buffer
+	encoded.Write([]byte{'C', 'T', 'H', 'K', 0x01})
+	_ = binary.Write(&encoded, binary.BigEndian, uint32(len(namespace)))
+	encoded.WriteString(namespace)
+	encoded.WriteByte(tag)
+	_ = binary.Write(&encoded, binary.BigEndian, uint32(len(subject)))
+	encoded.Write(subject)
+	return sha256.Sum256(encoded.Bytes())
 }
 
 func canonicalSignInEmail(email string) string {

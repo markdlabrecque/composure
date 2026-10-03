@@ -46,6 +46,7 @@ func TestSignInRetryCredentialErrorTLSJourney(t *testing.T) {
 			client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 			siteURL := mustSignInURLForTest(t, server.URL)
 			before := signInDatabaseBytesForTest(t, f.path)
+			stateBefore := signInApplicationStateSnapshotForTest(t, f)
 
 			response, err := client.Get(server.URL + "/admin/sign-in")
 			form := signInRetryResponseForTest(t, response, err)
@@ -87,7 +88,11 @@ func TestSignInRetryCredentialErrorTLSJourney(t *testing.T) {
 			if rejected.Code != http.StatusUnauthorized {
 				t.Fatalf("credential error status=%d, want 401", rejected.Code)
 			}
-			signInRetryAssertFailureForTest(t, f, rejected, before, nonce.Value)
+			if mode == "missing-password" {
+				signInRetryAssertFailureForTest(t, f, rejected, before, nil, nonce.Value)
+			} else {
+				signInRetryAssertFailureForTest(t, f, rejected, nil, &stateBefore, nonce.Value)
+			}
 			signInAssertNoSecretsForTest(t, rejected, nonce.Value, f.hash, signInOpaquePassword, "private-retry-wrong-password")
 
 			// Extract even an empty field so red evidence includes the actual
@@ -127,13 +132,13 @@ func TestSignInRetryCredentialErrorTLSJourney(t *testing.T) {
 			if otherRejected.Code != http.StatusUnauthorized {
 				t.Fatalf("other open form status=%d, want credential error 401, not CSRF rejection", otherRejected.Code)
 			}
-			signInRetryAssertFailureForTest(t, f, otherRejected, before, nonce.Value)
+			signInRetryAssertFailureForTest(t, f, otherRejected, nil, &stateBefore, nonce.Value)
 			response, err = client.Get(server.URL + "/admin/pages")
 			anonymous := signInRetryResponseForTest(t, response, err)
 			if anonymous.Header().Get("X-Test-Session-ID") != "" || anonymous.Header().Get("X-Test-Account-ID") != "" {
 				t.Fatal("failed sign-in established authenticated context")
 			}
-			signInAssertUnchangedForTest(t, f, before, 0)
+			signInAssertApplicationStateForTest(t, f, stateBefore, 0)
 
 			correct := url.Values{"email": {"editor@example.test"}, "password": {signInOpaquePassword}, "csrf_token": {rendered}}
 			response, err = client.PostForm(server.URL+"/admin/sign-in", correct)
@@ -185,7 +190,8 @@ func TestSignInRetryUsesValidatedNonceNotPreparsedToken(t *testing.T) {
 			if mode == "missing-password" {
 				values.Del("password")
 			}
-			before := signInDatabaseBytesForTest(t, f.path)
+			databaseBefore := signInDatabaseBytesForTest(t, f.path)
+			stateBefore := signInApplicationStateSnapshotForTest(t, f)
 			r := signInRequestForTest(http.MethodPost, "/admin/sign-in?csrf_token=private-retry-decoy", values.Encode(), nonceCookieNameForTest+"="+signInNonceForTest())
 			r.PostForm = url.Values{"csrf_token": {"private-retry-decoy"}}
 			r.Form = r.PostForm
@@ -193,7 +199,11 @@ func TestSignInRetryUsesValidatedNonceNotPreparsedToken(t *testing.T) {
 			if w.Code != http.StatusUnauthorized {
 				t.Fatalf("valid raw-body CSRF credential error status=%d, want 401", w.Code)
 			}
-			signInRetryAssertFailureForTest(t, f, w, before, signInNonceForTest())
+			if mode == "missing-password" {
+				signInRetryAssertFailureForTest(t, f, w, databaseBefore, nil, signInNonceForTest())
+			} else {
+				signInRetryAssertFailureForTest(t, f, w, nil, &stateBefore, signInNonceForTest())
+			}
 			signInAssertNoSecretsForTest(t, w, "private-retry-decoy", signInNonceForTest())
 			if signInFormTokenForTest(t, w.Body.String()) != signInTokenForTest(t, signInNonceForTest(), "preauth") {
 				t.Fatal("retry token did not match validated raw nonce derivation")
@@ -263,7 +273,7 @@ func signInRetryResponseForTest(t *testing.T, response *http.Response, err error
 	return w
 }
 
-func signInRetryAssertFailureForTest(t *testing.T, f signInFixtureForTest, w *httptest.ResponseRecorder, before map[string][]byte, nonce string) {
+func signInRetryAssertFailureForTest(t *testing.T, f signInFixtureForTest, w *httptest.ResponseRecorder, databaseBefore map[string][]byte, stateBefore *signInApplicationStateForTest, nonce string) {
 	t.Helper()
 	if w.Header().Get("Cache-Control") != "no-store" || !strings.HasPrefix(w.Header().Get("Content-Type"), "text/html") {
 		t.Fatal("credential-error form must be uncached HTML")
@@ -279,7 +289,11 @@ func signInRetryAssertFailureForTest(t *testing.T, f signInFixtureForTest, w *ht
 			signInAssertCookieForTest(t, cookie, false)
 		}
 	}
-	signInAssertUnchangedForTest(t, f, before, 0)
+	if stateBefore == nil {
+		signInAssertUnchangedForTest(t, f, databaseBefore, 0)
+	} else {
+		signInAssertApplicationStateForTest(t, f, *stateBefore, 0)
+	}
 }
 
 func signInRetryJarHasNonceForTest(jar http.CookieJar, siteURL *url.URL, nonce string) bool {
