@@ -24,6 +24,11 @@ func Reencode(filename string, encoded []byte, fieldSizeLimit *int64, fieldDimen
 	if err := upload.ValidateSize(kind, int64(len(encoded)), upload.DefaultSizeLimits(), fieldSizeLimit); err != nil {
 		return nil, "", err
 	}
+	if kind == upload.WebP {
+		if err := validateWebPRIFF(encoded); err != nil {
+			return nil, "", err
+		}
+	}
 	limits := upload.DefaultDimensionLimits()
 	if err := upload.ValidateDimensions(kind, bytes.NewReader(encoded), limits, fieldDimensionLimit); err != nil {
 		return nil, "", err
