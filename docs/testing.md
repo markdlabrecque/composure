@@ -15,6 +15,18 @@ without `--apply`; `--example` opts into the published demonstration Page.
 Phase 1 serves only loopback addresses. Port 0 selects an available port;
 use the printed address to open `/example`. Stop the server with Ctrl-C.
 
+For fresh-site first-administrator initialization, add `--admin-email EMAIL`
+to the planning and apply commands. Before applying, set
+`COMPOSURE_ADMIN_PASSWORD` through your local secret input mechanism; do not
+put the password in command arguments or commit it. Apply creates an active
+account with administrator and editor roles and a hashed password. An
+explicitly empty or ASCII-space-only email, missing or empty apply password,
+or existing account is refused. Legacy initialization without the email flag
+remains supported.
+
+Run `go test ./tests/integration -run TestAdminInit -count=1` for the real-CLI
+administrator initialization, password, and email boundary tests.
+
 Run `go test ./...` for Go tests. Run
 `go test ./... -run TestPhase1InitializeAndServe -count=1` for the focused
 process tests. These build and start the real CLI with temporary SQLite sites.
@@ -57,7 +69,11 @@ It then runs `go build ./...`, `go vet ./...`, `go test ./...`, and
 selecting bootstrap checks.
 
 The hosted `Composure checks` workflow runs on pull requests, pushes to `main`,
-and manual dispatch. It installs the pinned browser test environment with
+and manual dispatch. Before the phase gate, it runs govulncheck v1.3.0 and
+Staticcheck v0.8.1 / 2026.2.1. Staticcheck must exit zero with empty stdout
+and stderr; the temporary findings exception was removed in #172. These
+scanner steps are hosted checks, not part of `scripts/test-phase1`.
+It installs the pinned browser test environment with
 `bash scripts/install-browser-tests`, installs Chromium's Ubuntu system
 libraries with `.venv-browser/bin/python -m playwright install-deps chromium`,
 then invokes `bash scripts/test-phase1` once. The phase gate runs the shared Go

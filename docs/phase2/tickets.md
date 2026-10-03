@@ -712,13 +712,13 @@ Depends on: P2-66.
 
 ### P2-67b Fix the four current staticcheck findings (#172)
 
-Fix the four findings staticcheck 2026.2.1 reports today: two unused functions in `internal/config`, one unused template variable in `internal/web`, and one capitalized error string in `internal/content`. Delete the unused code and lowercase the string. No CI change.
+Fix the four findings staticcheck 2026.2.1 reports today: two unused functions in `internal/config`, one unused template variable in `internal/web`, and one capitalized error string in `internal/content`. Delete the unused code and lowercase the string. Original scope excluded CI changes; Mark subsequently authorized retirement of the temporary warning lease and its tests/wiring. Completed #172 delivered those changes in PR #213 without changing the scanner pin.
 
 Depends on: P2-67a.
 
 ### P2-67c Make staticcheck fail the check (#173)
 
-Change the P2-67a step from warn to fail.
+Original deliverable: change the P2-67a step from warn to fail. Strict enforcement was delivered with the authorized #172 scope expansion in PR #213. #173 remains open; reconcile its acceptance against that delivery before proposing further implementation or closing the issue.
 
 Depends on: P2-67b.
 

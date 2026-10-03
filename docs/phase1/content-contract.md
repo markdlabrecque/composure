@@ -1,6 +1,6 @@
 # Phase 1 content contract: Page state, storage and runtime
 
-Status: Proposed for review (P1-01, issue #2)
+Status: Accepted Phase 1 contract (P1-01, completed issue #2). Later Phase 2 behavior is specified in the [access contract](../phase2/access-contract.md) and [development storage policy](../phase2/development-storage-policy.md).
 Scope authority: [PRD](../prd.md). Technical baseline: [architecture plan](../architecture_plan.md). Delivery: [work plan](../work_plan.md#phase-1-prove-the-foundation-and-publishing-model).
 
 This contract fixes what the phase 1 tickets build for the one **Page** type: the storage model, the draft/publication rules, URL ownership, versions, the CLI, and the HTTP routes. Sections marked **Future (not implemented in phase 1)** are design constraints for later phases; phase 1 code must not build them, but must not make them impossible. The minimal configuration file format belongs to P1-02 (#3); this document stores active configuration but does not define its format. Following the critique review, defer the audit shape to phase 2 and the full recovery manifest to phase 6. The [storage and deployment ADR](../adr/0001-runtime-content-and-deployment.md) governs model evolution, production config ownership and recovery-safe files.

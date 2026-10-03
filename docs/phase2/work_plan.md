@@ -4,7 +4,7 @@ Status: active, progress updated 2026-10-02. Lane and wave layout written 2026-0
 
 ## Progress as of 2026-10-02
 
-The latest batch is merged into `phase-2`, summarized on GitHub, closed as completed, and retired. Integration HEAD is `cd580be9ff36402df50b5f161357386e04443dfb`. Each ticket has independent final approval and passing required hosted `Composure checks` for its publication head. The completion summaries identify the local-gate candidate and CI-tested revision separately; historical local runs are not attributed to later checkpoint-only heads.
+The latest batch is merged into `phase-2`, summarized on GitHub, closed as completed, and retired. The batch ends at merge commit `cd580be9ff36402df50b5f161357386e04443dfb`; the subsequent documentation snapshot is `949253da6ee8c9f96dde8e4de728c115d2713014`, which adds the progress and ticket-session pilot documentation. Each ticket has independent final approval and passing required hosted `Composure checks` for its publication head. The completion summaries identify the local-gate candidate and CI-tested revision separately; historical local runs are not attributed to later checkpoint-only heads.
 
 | Completed issue | Delivered scope | Merged PR | Merge commit | Completion summary |
 | --- | --- | --- | --- | --- |
@@ -15,11 +15,11 @@ The latest batch is merged into `phase-2`, summarized on GitHub, closed as compl
 
 The summaries preserve review counts, tested revisions and exceptions. #69's local gate history includes a failed browser-prerequisite run followed by one explicitly authorized passing recovery on the unchanged candidate. #137 preserves two intentional Markdown hard breaks under a narrow local whitespace-check exception; its full gate and required CI passed without exception.
 
-GitHub currently records these 29 Phase 2 issues closed: #58, #59, #60, #61, #62, #63, #64, #65, #66, #67, #68, #69, #70, #71, #72, #73, #74, #75, #77, #88, #101, #106, #114, #126, #136, #137, #170, #171 and #172. Do not redispatch them. The wave tables below retain the original dependency layout, not a live list of unfinished work.
+GitHub records these 29 original Phase 2 tickets closed: #58, #59, #60, #61, #62, #63, #64, #65, #66, #67, #68, #69, #70, #71, #72, #73, #74, #75, #77, #88, #101, #106, #114, #126, #136, #137, #170, #171 and #172. Related decision issues #189 and #197 are also closed. Do not redispatch completed work. The wave tables below retain the original dependency layout, not a live list of unfinished work.
 
 ### Next dependency-ready candidates
 
-These open tickets have closed prerequisites in the lane plan. Before dispatch, verify prerequisite changes are present in the current phase branch and apply the normal scope, ownership and review checks. #81 is the next open ticket on the critical path.
+These open tickets have closed prerequisites in the lane plan. Before dispatch, verify prerequisite changes are present in the current phase branch and apply the normal scope, ownership and review checks. #81 is the next open ticket on the critical path. Its local worktree already exists at `/home/mark/Projects/worktrees/composure/81`; reconcile its recorded thread/session and evidence before any new dispatch. Worktree existence alone does not establish implementation progress.
 
 | Lane | Issue | Next outcome |
 | --- | --- | --- |
@@ -30,9 +30,13 @@ These open tickets have closed prerequisites in the lane plan. Before dispatch, 
 | Web guard and CSRF | #81 | Reject unauthenticated admin requests |
 | Web invitations | #89 | Invitation form and token issue |
 | Web reset | #95 | Request-reset form with generic response |
-| CI | #173 | Make staticcheck fail the check |
+| CI | #173 | Reconcile acceptance against the strict enforcement already delivered by #172; issue remains open |
 
 #138 has closed ticket prerequisites but remains held for a product decision: reconcile the accepted field-only size/dimension policy with the documented global/category defaults before #138/#139. #140 also needs approved ZIP/OOXML bounds before full DOCX validation. Neither decision was settled by #137.
+
+[#191](https://github.com/markdlabrecque/composure/issues/191) remains open and must be coordinated with #79/#131 before the first audited consumers are treated as complete. Recorder documentation and tests must distinguish development log-line output from durable SQLite recording and define the state-commit boundary.
+
+The completed batch's role handoffs have been removed from the checkout after a verified private archive of their latest contents. GitHub completion summaries above remain the delivery record; historical role evidence is retained outside the checkout under `~/.codex/runtime/ticket-sessions/composure-completed-handoffs/`.
 
 Other reported follow-ups remain separate work: the duplicated but consistent account-email canonicalizer, broader email grammar, SQLite browser-fixture cleanup, and incomplete contrast/manual accessibility checks. This batch does not complete Phase 2 access controls, safe uploads, human security signoff, WCAG conformance or production readiness.
 
@@ -261,7 +265,11 @@ Peak concurrency is 10 tickets in wave 2. Running four to six agents keeps most 
 
 ## Open questions carried from the ticket draft
 
-1. Argon2id parameters (#64).
+The Argon2id parameter decision is resolved by completed #64 and the [password contract](access-contract/03-passwords.md).
+
+Remaining decisions:
+
+1. Field-only upload limits versus global/category defaults before #138/#139, and ZIP/OOXML bounds before #140.
 2. Logo and colour branding: Phase 2 after #155, or Phase 4.
 
-The former Hetzner-host protection choice is not a Phase 2 question: there is no Phase 2 production/test-host deployment. Host protection and real-host evidence remain deferred release work. Issues #156–#158 are held for human signoff beyond Phase 2; automated auth/roles/uploads checks remain Phase 2 acceptance. The reporter should update the affected review/deploy issue bodies to distinguish automated Debian-harness checks from deferred human signoff and Hetzner evidence; see the implementor handoff for exact proposed text.
+The former Hetzner-host protection choice is not a Phase 2 question: there is no Phase 2 production/test-host deployment. Host protection and real-host evidence remain deferred release work. Issues #156–#158 are held for human signoff beyond Phase 2; automated auth/roles/uploads checks remain Phase 2 acceptance. The reporter should update the affected review/deploy issue bodies to distinguish automated Debian-harness checks from deferred human signoff and Hetzner evidence. Use the current scope and acceptance rules in this plan and `docs/work_plan.md`; retired role handoffs are historical evidence.

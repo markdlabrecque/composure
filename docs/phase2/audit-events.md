@@ -1,7 +1,8 @@
 # Audit events
 
-Status: Contract in progress. The event envelope is defined in [01-envelope.md](audit-events/01-envelope.md). Later sections will define covered actions and recording time, redaction, and counted failures and retention as those decisions are accepted.
+Status: Contract sections completed through #58–#61. The linked sections define the event envelope, covered actions and recording time, redaction, and counted failures and retention. Recorder durability and state-commit boundaries remain follow-up work in #191, coordinated with #79/#131.
 
+- [01 Event envelope](audit-events/01-envelope.md)
 - [02 Covered actions and recording time](audit-events/02-actions.md)
 - [03 Redaction allowlist](audit-events/03-redaction.md)
 - [04 Counted failures, flush, and retention](audit-events/04-throttling-and-retention.md)
