@@ -31,16 +31,14 @@ type resetRequestRepository interface {
 	IssueToken(context.Context, store.TokenDraft, time.Time) (store.Token, string, error)
 }
 
-type resetRequestClock interface{ Now() time.Time }
-
 type resetRequestPageData struct{ Token string }
 
-func registerResetRequestRoutes(mux *http.ServeMux, repository content.Repository) {
+func registerResetRequestRoutes(mux *http.ServeMux, repository content.Repository, now func() time.Time) {
 	mux.HandleFunc("GET /reset", func(w http.ResponseWriter, r *http.Request) {
 		serveResetRequestForm(w, r)
 	})
 	mux.HandleFunc("POST /reset", func(w http.ResponseWriter, r *http.Request) {
-		serveResetRequestPost(w, r, repository)
+		serveResetRequestPost(w, r, repository, now)
 	})
 }
 
@@ -64,7 +62,7 @@ func serveResetRequestForm(w http.ResponseWriter, r *http.Request) {
 	writeResetRequestPage(w, http.StatusOK, resetRequestPageData{Token: preAuthToken(raw)})
 }
 
-func serveResetRequestPost(w http.ResponseWriter, r *http.Request, repository content.Repository) {
+func serveResetRequestPost(w http.ResponseWriter, r *http.Request, repository content.Repository, now func() time.Time) {
 	mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
 	if err != nil || !strings.EqualFold(mediaType, "application/x-www-form-urlencoded") {
 		http.Error(w, "Form must use application/x-www-form-urlencoded.", http.StatusUnsupportedMediaType)
@@ -123,11 +121,7 @@ func serveResetRequestPost(w http.ResponseWriter, r *http.Request, repository co
 		return
 	}
 	if err == nil && account.State == "active" {
-		at := time.Now()
-		if clock, ok := repository.(resetRequestClock); ok {
-			at = clock.Now()
-		}
-		at = at.UTC()
+		at := now().UTC()
 		accountID := account.ID
 		_, _, err = repo.IssueToken(r.Context(), store.TokenDraft{
 			Purpose: "password_reset", AccountID: &accountID, ExpiresAt: at.Add(time.Hour),

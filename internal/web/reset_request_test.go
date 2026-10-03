@@ -31,8 +31,6 @@ type resetRequestRepositoryForTest struct {
 	rawTokens []string
 }
 
-func (r *resetRequestRepositoryForTest) Now() time.Time { return r.now }
-
 func (r *resetRequestRepositoryForTest) GetAccountByEmail(ctx context.Context, email string) (store.Account, error) {
 	r.lookups = append(r.lookups, email)
 	return r.Store.GetAccountByEmail(ctx, email)
@@ -91,7 +89,7 @@ func newResetRequestFixtureForTest(t *testing.T) resetRequestFixtureForTest {
 
 func resetRequestServeForTest(f resetRequestFixtureForTest, r *http.Request) *httptest.ResponseRecorder {
 	w := httptest.NewRecorder()
-	Handler(f.repo, "8443").ServeHTTP(w, r)
+	HandlerWithClock(f.repo, "8443", func() time.Time { return f.repo.now }).ServeHTTP(w, r)
 	return w
 }
 
