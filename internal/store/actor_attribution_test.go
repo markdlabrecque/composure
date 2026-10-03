@@ -3,6 +3,7 @@ package store_test
 import (
 	"bytes"
 	"context"
+	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/base64"
 	"net/http"
@@ -72,7 +73,20 @@ func newActorHTTPFixture(t *testing.T, example *content.Snapshot) *actorHTTPFixt
 
 func (f *actorHTTPFixture) request(t *testing.T, target string, values url.Values, authenticated bool) *httptest.ResponseRecorder {
 	t.Helper()
-	request := httptest.NewRequest(http.MethodPost, "https://127.0.0.1:8443"+target, strings.NewReader(values.Encode()))
+	requestValues := make(url.Values, len(values)+1)
+	for key, entries := range values {
+		requestValues[key] = append([]string(nil), entries...)
+	}
+	if authenticated {
+		rawCredential, err := base64.RawURLEncoding.DecodeString(f.credential)
+		if err != nil {
+			t.Fatal(err)
+		}
+		mac := hmac.New(sha256.New, rawCredential)
+		_, _ = mac.Write([]byte("composure:csrf:authenticated:v1"))
+		requestValues.Set("csrf_token", base64.RawURLEncoding.EncodeToString(mac.Sum(nil)))
+	}
+	request := httptest.NewRequest(http.MethodPost, "https://127.0.0.1:8443"+target, strings.NewReader(requestValues.Encode()))
 	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	if authenticated {
 		request.Header.Set("Cookie", actorSessionCookieName+"="+f.credential)
