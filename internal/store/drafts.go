@@ -66,6 +66,16 @@ func (s *Store) GetItem(ctx context.Context, id string) (content.Item, error) {
 }
 
 func (s *Store) CreateItem(ctx context.Context, draft content.ItemDraft, at time.Time) (string, error) {
+	return s.CreateItemByActor(ctx, draft, at, "local-prototype")
+}
+
+// CreateItemByActor creates a Page draft with explicit attribution supplied by
+// the authenticated request boundary. CreateItem retains the Phase 1
+// local-prototype behavior for existing non-web callers.
+func (s *Store) CreateItemByActor(ctx context.Context, draft content.ItemDraft, at time.Time, actor string) (string, error) {
+	if actor == "" {
+		return "", errors.New("actor is required")
+	}
 	id, err := content.NewID(at)
 	if err != nil {
 		return "", err
@@ -91,7 +101,7 @@ func (s *Store) CreateItem(ctx context.Context, draft content.ItemDraft, at time
 	}
 	_, err = tx.ExecContext(ctx, `
 		INSERT INTO items(id,type_id,title,path,fields,draft_revision,created_at,created_by,updated_at,updated_by,published_snapshot_id)
-		VALUES(?,'page',?,?,?,1,?,'local-prototype',?,'local-prototype',NULL)`, id, draft.Title, draft.Path, string(fields), timestamp, timestamp)
+		VALUES(?,'page',?,?,?,1,?,?,?,?,NULL)`, id, draft.Title, draft.Path, string(fields), timestamp, actor, timestamp, actor)
 	if err != nil {
 		return "", err
 	}

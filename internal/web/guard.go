@@ -21,6 +21,19 @@ func adminGuard(next http.Handler) http.Handler {
 	})
 }
 
+// pageWriteActor returns the account established by SessionMiddleware for a
+// Page mutation. The admin guard normally handles this case first; keeping the
+// mutation boundary fail-closed also protects these handlers if their routing
+// is changed later.
+func pageWriteActor(w http.ResponseWriter, r *http.Request) (string, bool) {
+	_, account, ok := SessionFromContext(r.Context())
+	if !ok {
+		http.Redirect(w, r, "/admin/sign-in", http.StatusSeeOther)
+		return "", false
+	}
+	return account.ID, true
+}
+
 func isAdminPath(path string) bool {
 	return path == "/admin" || strings.HasPrefix(path, "/admin/")
 }
