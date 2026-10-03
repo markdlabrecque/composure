@@ -634,13 +634,25 @@ func validateDOCXContentTypes(data []byte) (string, error) {
 		return "", errors.New("DOCX content types part is missing or malformed")
 	}
 	main := ""
+	seenDefaults := make(map[string]bool, len(doc.Defaults))
 	for _, def := range doc.Defaults {
-		if def.Extension == "" || isDOCXMacroMetadata(def.ContentType) {
+		extension := strings.ToLower(def.Extension)
+		if def.Extension == "" || def.ContentType == "" {
+			return "", errors.New("DOCX content types contain a missing required attribute")
+		}
+		if seenDefaults[extension] {
+			return "", errors.New("DOCX content types contain a duplicate default extension")
+		}
+		seenDefaults[extension] = true
+		if isDOCXMacroMetadata(def.ContentType) {
 			return "", errors.New("macro-bearing DOCX content types are not accepted")
 		}
 	}
 	seen := make(map[string]bool, len(doc.Overrides))
 	for _, override := range doc.Overrides {
+		if override.PartName == "" || override.ContentType == "" {
+			return "", errors.New("DOCX content types contain a missing required attribute")
+		}
 		name, err := cleanDOCXPartName(override.PartName)
 		if err != nil || seen[name] {
 			return "", errors.New("DOCX content types contain an unsafe or duplicate part name")
@@ -729,7 +741,12 @@ func validateDOCXRelationships(data []byte) (string, error) {
 		return "", errors.New("DOCX root relationships part is missing or malformed")
 	}
 	main := ""
+	seenIDs := make(map[string]bool, len(doc.Relationships))
 	for _, rel := range doc.Relationships {
+		if rel.ID == "" || rel.Type == "" || rel.Target == "" || seenIDs[rel.ID] {
+			return "", errors.New("DOCX root relationships contain a missing or duplicate required attribute")
+		}
+		seenIDs[rel.ID] = true
 		if rel.Type != docxOfficeRelType {
 			continue
 		}
