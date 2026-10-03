@@ -84,6 +84,7 @@ func Handler(repository content.Repository, port string) http.Handler {
 		fmt.Fprintln(w, "ok")
 	})
 	registerSignInRoutes(mux, repository)
+	mux.HandleFunc("POST /admin/sign-out", func(w http.ResponseWriter, r *http.Request) { serveSignOut(w, r, repository) })
 	mux.HandleFunc("GET /admin/static/admin.css", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/css; charset=utf-8")
 		_, _ = w.Write([]byte(adminCSS))
