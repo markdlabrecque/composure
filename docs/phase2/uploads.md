@@ -22,7 +22,7 @@ The validator rejects negative file sizes, unsupported kinds, and non-positive s
 
 ## Images
 
-Before decoding pixels, inspect image headers and reject an image if either dimension exceeds 16,384 pixels or if width multiplied by height exceeds 40,000,000 pixels. Check the arithmetic without overflow. A 5,000 × 8,000 image is exactly 40,000,000 pixels and meets the area limit; 5,001 × 8,000 exceeds it. A width of 16,385 pixels exceeds the axis limit even when the other dimension is 1 pixel.
+Before decoding pixels, inspect JPEG, PNG, and WebP headers and reject malformed or truncated headers, zero dimensions, and an image if either dimension exceeds 16,384 pixels or if width multiplied by height exceeds 40,000,000 pixels. These are immutable hard ceilings: supplied site limits and optional field-specific limits may independently lower the width, height, or pixel ceiling, but cannot raise it. Header inspection must be bounded to at most 1 MiB of input and must not decode pixels. Check the arithmetic without overflow. A 5,000 × 8,000 image is exactly 40,000,000 pixels and meets the area limit; 5,001 × 8,000 exceeds it. A width of 16,385 pixels exceeds the axis limit even when the other dimension is 1 pixel.
 
 Decode and re-encode accepted images without EXIF or GPS metadata. Decode WebP with pinned `golang.org/x/image/webp` and store it as PNG. Use Go's standard library for JPEG and PNG encoding. Generate image variants with `golang.org/x/image/draw` as bounded editorial work before publication, never in response to a public request. Initially, one image worker handles jobs per site.
 
