@@ -1,0 +1,7 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="stylesheet" href="/admin/static/admin.css"><title>Reset password</title></head><body>
+<main><h1>Reset password</h1>
+{{if .Token}}<form method="post" action="/reset">
+<input type="hidden" name="csrf_token" value="{{.Token}}">
+<div><label for="reset-email">Email</label><input id="reset-email" type="email" name="email" autocomplete="email" required></div>
+<button type="submit">Send reset link</button></form>{{else}}<p>If an active account matches that email address, a reset link will be sent.</p>{{end}}</main></body></html>
