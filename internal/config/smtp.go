@@ -9,6 +9,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"unicode"
 )
 
 // SMTP contains relay settings read from COMPOSURE_SMTP_* environment
@@ -146,7 +147,7 @@ func isLocalSMTPHost(host string) bool {
 
 func hasControl(value string) bool {
 	for _, r := range value {
-		if r < 0x20 || r == 0x7f {
+		if unicode.IsControl(r) {
 			return true
 		}
 	}
