@@ -237,7 +237,7 @@ func readWebPDimensions(r io.Reader) (uint32, uint32, error) {
 			if _, err := io.ReadFull(r, data[:]); err != nil {
 				return 0, 0, errors.New("truncated WebP VP8X header")
 			}
-			if data[0]&0xe0 != 0 || data[1] != 0 || data[2] != 0 || data[3] != 0 {
+			if data[0]&0xc1 != 0 || data[1] != 0 || data[2] != 0 || data[3] != 0 {
 				return 0, 0, errors.New("invalid WebP VP8X reserved bits")
 			}
 			return readUint24(data[4:7]) + 1, readUint24(data[7:10]) + 1, nil
