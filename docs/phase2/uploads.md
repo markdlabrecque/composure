@@ -28,9 +28,9 @@ Decode and re-encode accepted images without EXIF or GPS metadata. Decode WebP w
 
 ## DOCX archives
 
-Treat DOCX as an untrusted ZIP archive. Inspect and validate it without extracting files to disk. Check entry count, total expanded bytes, compression ratio, entry paths, and the expected OOXML content types. Reject macros, encrypted archives, and archive features or compression methods the validator does not support.
+Treat DOCX as an untrusted ZIP archive. Inspect and validate it without extracting files to disk. Accept at most 1,000 entries, including directory entries; at most 100 MiB of total expanded data; and at most 25 MiB for any one entry. Accept an expanded-to-compressed ratio of at most 100:1 for each entry and for the archive overall. These limits are inclusive.
 
-The PRD does not set numeric bounds for entry count, expanded bytes, or compression ratio, nor the complete path and supported-compression policies. Mark must approve those bounds and policies before the DOCX validator is implemented. Do not select values in code or tests without that decision.
+Accept only stored and deflated entries. Reject encrypted entries, macro-enabled content, symbolic links, duplicate paths, unsafe paths, malformed or truncated archives, inconsistent size metadata, and entries whose data or CRC cannot be fully read and verified. Safe directory entries with a terminal slash are allowed only when they have consistent directory metadata and zero expanded data; they count toward the entry limit. Reject unsafe directories and directory/file entries that identify the same path. Require valid OOXML content types, one internal officeDocument relationship to the main part, and a well-formed Word main document. Bound actual reads by the entry and archive limits and check size arithmetic for overflow. Never execute macros or extract archive entries to disk.
 
 ## Names, references, and recovery
 
