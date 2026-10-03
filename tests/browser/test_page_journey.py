@@ -7,6 +7,7 @@ from pathlib import Path
 import unittest
 from urllib.error import HTTPError
 from urllib.request import urlopen
+import ssl
 
 from test_lifecycle import BuiltAppTests, managed_site
 
@@ -104,7 +105,7 @@ class PageJourneyTests(BuiltAppTests):
     def public(self, url, status, title=None, body=None, absent=()):
         # urllib is independent of browser cookies, page DOM and request context.
         try:
-            response = urlopen(url, timeout=5)
+            response = urlopen(url, timeout=5, context=ssl._create_unverified_context())
         except HTTPError as error:
             response = error
         with response:
@@ -123,12 +124,17 @@ class PageJourneyTests(BuiltAppTests):
         title_a, body_a = "Publication Alpha title", "Alpha saved body: violet river"
         title_b, body_b = "Publication Beta title", "Beta saved body: copper mountain"
         path = "/browser-journey"
-        with managed_site(self.binary) as site:
+        with managed_site(self.binary, tls_proxy_binary=self.tls_proxy_binary) as site:
             self.retain_cleanup(site)
-            context = self.browser.new_context(viewport={"width": width, "height": 900})
+            context = self.browser.new_context(viewport={"width": width, "height": 900}, ignore_https_errors=True)
             try:
                 page = context.new_page()
                 page.set_default_timeout(5000)
+                page.goto(site.url + "/admin/sign-in")
+                page.get_by_label("Email", exact=True).fill("browser@example.test")
+                page.get_by_label("Password", exact=True).fill("Browser-fixture-password-2026!")
+                page.get_by_role("button", name="Sign in", exact=True).click()
+                page.wait_for_url("**/admin/pages")
                 page.goto(site.url + "/admin/pages")
                 empty_state = page.get_by_text("No Pages yet.", exact=True)
                 if os.environ.get("COMPOSURE_BROWSER_FAILURE_PROBE") == "1":

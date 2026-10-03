@@ -331,6 +331,7 @@ func TestPublishTicket9ConcurrentSamePath(t *testing.T) {
 				return
 			}
 			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			req.Header.Set("Cookie", adminFixtureCookie(t, base))
 			c := &http.Client{Timeout: 10 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 			r, err := c.Do(req)
 			if err != nil {
