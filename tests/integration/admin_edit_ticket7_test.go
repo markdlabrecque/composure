@@ -363,7 +363,7 @@ func TestPhase1EditDraftConcurrentRevision(t *testing.T) {
 		go func(title string) {
 			defer wg.Done()
 			<-start
-			v := url.Values{"title": {title}, "path": {"/draft"}, "body": {title}, "draft_revision": {"1"}}
+			v := url.Values{"title": {title}, "path": {"/draft"}, "body": {title}, "draft_revision": {"1"}, "csrf_token": {adminFixtureCSRFToken(t, base)}}
 			req, err := http.NewRequest("POST", base+"/admin/pages/"+id, strings.NewReader(v.Encode()))
 			if err != nil {
 				errs <- err

@@ -46,6 +46,7 @@ type conflictOwner struct {
 
 type pageFormData struct {
 	Heading, Action, Revision, SubmitLabel string
+	CSRFToken                              string
 	Notice                                 string
 	PreviewURL                             string
 	PublishURL                             string
@@ -79,12 +80,15 @@ func ResolveLoopback(ctx context.Context, address string) (string, error) {
 
 func Handler(repository content.Repository, port string) http.Handler {
 	mux := http.NewServeMux()
+	handleAdminPost := func(pattern string, handler http.HandlerFunc) {
+		mux.Handle(pattern, authenticatedPost(handler))
+	}
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		fmt.Fprintln(w, "ok")
 	})
 	registerSignInRoutes(mux, repository)
-	mux.HandleFunc("POST /admin/sign-out", func(w http.ResponseWriter, r *http.Request) { serveSignOut(w, r, repository) })
+	handleAdminPost("POST /admin/sign-out", func(w http.ResponseWriter, r *http.Request) { serveSignOut(w, r, repository) })
 	mux.HandleFunc("GET /admin/static/admin.css", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/css; charset=utf-8")
 		_, _ = w.Write([]byte(adminCSS))
@@ -106,14 +110,11 @@ func Handler(repository content.Repository, port string) http.Handler {
 			http.Error(w, "cannot load Page configuration", http.StatusInternalServerError)
 			return
 		}
-		writeTemplate(w, pageFormTemplate, newFormData(definition, nil, nil, nil))
+		writePageForm(w, r, http.StatusOK, newFormData(definition, nil, nil, nil))
 	})
-	mux.HandleFunc("POST /admin/pages", func(w http.ResponseWriter, r *http.Request) {
+	handleAdminPost("POST /admin/pages", func(w http.ResponseWriter, r *http.Request) {
 		actor, ok := pageWriteActor(w, r)
 		if !ok {
-			return
-		}
-		if !parseAdminForm(w, r) {
 			return
 		}
 		definition, err := activePageDefinition(r.Context(), repository)
@@ -124,7 +125,7 @@ func Handler(repository content.Repository, port string) http.Handler {
 		values := submittedValues(r, definition)
 		draft, problems := content.PreparePageDraft(definition, values)
 		if len(problems) > 0 {
-			writeValidationForm(w, definition, values, problems)
+			writeValidationForm(w, r, definition, values, problems)
 			return
 		}
 		id, err := repository.CreateItemByActor(r.Context(), draft, time.Now(), actor)
@@ -133,7 +134,7 @@ func Handler(repository content.Repository, port string) http.Handler {
 			if errors.As(err, &taken) {
 				owner := &conflictOwner{ID: taken.OwnerID, Title: taken.OwnerTitle}
 				data := newFormData(definition, values, nil, owner)
-				writeTemplateStatus(w, http.StatusConflict, pageFormTemplate, data)
+				writePageForm(w, r, http.StatusConflict, data)
 				return
 			}
 			http.Error(w, "cannot create Page", http.StatusInternalServerError)
@@ -160,7 +161,7 @@ func Handler(repository content.Repository, port string) http.Handler {
 		if r.URL.Query().Get("notice") == "published" {
 			data.Notice = "Page published."
 		}
-		writeTemplate(w, pageFormTemplate, data)
+		writePageForm(w, r, http.StatusOK, data)
 	})
 	mux.HandleFunc("GET /admin/pages/{id}/preview", func(w http.ResponseWriter, r *http.Request) {
 		item, err := repository.GetItem(r.Context(), r.PathValue("id"))
@@ -186,12 +187,9 @@ func Handler(repository content.Repository, port string) http.Handler {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		_, _ = w.Write(html)
 	})
-	mux.HandleFunc("POST /admin/pages/{id}", func(w http.ResponseWriter, r *http.Request) {
+	handleAdminPost("POST /admin/pages/{id}", func(w http.ResponseWriter, r *http.Request) {
 		actor, ok := pageWriteActor(w, r)
 		if !ok {
-			return
-		}
-		if !parseAdminForm(w, r) {
 			return
 		}
 		id := r.PathValue("id")
@@ -213,13 +211,13 @@ func Handler(repository content.Repository, port string) http.Handler {
 		revisionText := r.PostForm.Get("draft_revision")
 		revision, parseErr := strconv.Atoi(revisionText)
 		if parseErr != nil {
-			writeEditProblem(w, http.StatusConflict, item, definition, values, revisionText,
+			writeEditProblem(w, r, http.StatusConflict, item, definition, values, revisionText,
 				formProblem{Code: "stale_draft", Message: "This Page changed after the form was loaded. Review your values and reload before saving."}, nil)
 			return
 		}
 		draft, problems := content.PreparePageDraft(definition, values)
 		if len(problems) > 0 {
-			writeEditValidationForm(w, item, definition, values, revisionText, problems)
+			writeEditValidationForm(w, r, item, definition, values, revisionText, problems)
 			return
 		}
 		_, err = repository.SaveDraft(r.Context(), id, revision, draft, time.Now(), actor)
@@ -230,18 +228,18 @@ func Handler(repository content.Repository, port string) http.Handler {
 		var taken *content.PathTakenError
 		if errors.As(err, &taken) {
 			owner := &conflictOwner{ID: taken.OwnerID, Title: taken.OwnerTitle}
-			writeEditProblem(w, http.StatusConflict, item, definition, values, revisionText,
+			writeEditProblem(w, r, http.StatusConflict, item, definition, values, revisionText,
 				formProblem{Code: "path_taken", Message: "That path is already used by another Page."}, owner)
 			return
 		}
 		if errors.Is(err, content.ErrStaleDraft) {
-			writeEditProblem(w, http.StatusConflict, item, definition, values, revisionText,
+			writeEditProblem(w, r, http.StatusConflict, item, definition, values, revisionText,
 				formProblem{Code: "stale_draft", Message: "This Page changed after the form was loaded. Review your values and reload before saving."}, nil)
 			return
 		}
 		var pathChange *content.PathChangeUnsupportedError
 		if errors.As(err, &pathChange) {
-			writeEditProblem(w, http.StatusUnprocessableEntity, item, definition, values, revisionText,
+			writeEditProblem(w, r, http.StatusUnprocessableEntity, item, definition, values, revisionText,
 				formProblem{Field: "path", Code: "path_change_unsupported", Message: fmt.Sprintf("Changing a published Page's path needs redirects, which arrive in a later phase. Keep %s for now. Redirect support arrives in phase 5.", pathChange.OwnedPath)}, nil)
 			return
 		}
@@ -251,12 +249,9 @@ func Handler(repository content.Repository, port string) http.Handler {
 		}
 		http.Error(w, "cannot save Page", http.StatusInternalServerError)
 	})
-	mux.HandleFunc("POST /admin/pages/{id}/publish", func(w http.ResponseWriter, r *http.Request) {
+	handleAdminPost("POST /admin/pages/{id}/publish", func(w http.ResponseWriter, r *http.Request) {
 		actor, ok := pageWriteActor(w, r)
 		if !ok {
-			return
-		}
-		if !parseAdminForm(w, r) {
 			return
 		}
 		revisionText := r.PostForm.Get("draft_revision")
@@ -309,7 +304,7 @@ func Handler(repository content.Repository, port string) http.Handler {
 			for _, problem := range validation.Problems {
 				problems = append(problems, formProblem{Field: problem.Field, Code: problem.Code, Message: validationMessage(problem, definition)})
 			}
-			writeTemplateStatus(w, http.StatusUnprocessableEntity, pageFormTemplate,
+			writePageForm(w, r, http.StatusUnprocessableEntity,
 				editFormData(item, definition, nil, problems, strconv.Itoa(revision)))
 			return
 		}
@@ -413,7 +408,7 @@ func writePublishProblem(w http.ResponseWriter, r *http.Request, repository cont
 	}
 	data := editFormData(item, definition, nil, []formProblem{problem}, strconv.Itoa(item.Revision))
 	data.Owner = owner
-	writeTemplateStatus(w, status, pageFormTemplate, data)
+	writePageForm(w, r, status, data)
 }
 
 func parseAdminForm(w http.ResponseWriter, r *http.Request) bool {
@@ -505,27 +500,32 @@ func editFormData(item content.Item, definition content.PageDefinition, values m
 	return data
 }
 
-func writeValidationForm(w http.ResponseWriter, definition content.PageDefinition, values map[string]string, problems []content.FieldError) {
+func writePageForm(w http.ResponseWriter, r *http.Request, status int, data pageFormData) {
+	data.CSRFToken = sessionCSRFToken(r)
+	writeTemplateStatus(w, status, pageFormTemplate, data)
+}
+
+func writeValidationForm(w http.ResponseWriter, r *http.Request, definition content.PageDefinition, values map[string]string, problems []content.FieldError) {
 	data := make([]formProblem, 0, len(problems))
 	for _, problem := range problems {
 		data = append(data, formProblem{Field: problem.Field, Code: problem.Code, Message: validationMessage(problem, definition)})
 	}
-	writeTemplateStatus(w, http.StatusUnprocessableEntity, pageFormTemplate, newFormData(definition, values, data, nil))
+	writePageForm(w, r, http.StatusUnprocessableEntity, newFormData(definition, values, data, nil))
 }
 
-func writeEditValidationForm(w http.ResponseWriter, item content.Item, definition content.PageDefinition, values map[string]string, revision string, problems []content.FieldError) {
+func writeEditValidationForm(w http.ResponseWriter, r *http.Request, item content.Item, definition content.PageDefinition, values map[string]string, revision string, problems []content.FieldError) {
 	data := make([]formProblem, 0, len(problems))
 	for _, problem := range problems {
 		data = append(data, formProblem{Field: problem.Field, Code: problem.Code, Message: validationMessage(problem, definition)})
 	}
-	writeTemplateStatus(w, http.StatusUnprocessableEntity, pageFormTemplate, editFormData(item, definition, values, data, revision))
+	writePageForm(w, r, http.StatusUnprocessableEntity, editFormData(item, definition, values, data, revision))
 }
 
-func writeEditProblem(w http.ResponseWriter, status int, item content.Item, definition content.PageDefinition, values map[string]string, revision string, problem formProblem, owner *conflictOwner) {
+func writeEditProblem(w http.ResponseWriter, r *http.Request, status int, item content.Item, definition content.PageDefinition, values map[string]string, revision string, problem formProblem, owner *conflictOwner) {
 	data := editFormData(item, definition, values, nil, revision)
 	data.Errors = []formProblem{problem}
 	data.Owner = owner
-	writeTemplateStatus(w, status, pageFormTemplate, data)
+	writePageForm(w, r, status, data)
 }
 
 func validationMessage(problem content.FieldError, definition content.PageDefinition) string {

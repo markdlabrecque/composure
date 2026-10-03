@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
 	"database/sql"
@@ -287,6 +288,22 @@ func adminFixtureCookie(t *testing.T, base string) string {
 	adminFixtureCookies[site] = credential
 	adminFixtureAccountIDs[site] = accountID
 	return "__Host-composure_session=" + credential
+}
+
+func adminFixtureCSRFToken(t *testing.T, base string) string {
+	t.Helper()
+	cookie := adminFixtureCookie(t, base)
+	_, credential, ok := strings.Cut(cookie, "=")
+	if !ok {
+		t.Fatal("admin fixture cookie lacks a credential")
+	}
+	raw, err := base64.RawURLEncoding.Strict().DecodeString(credential)
+	if err != nil {
+		t.Fatalf("decode admin fixture credential: %v", err)
+	}
+	mac := hmac.New(sha256.New, raw)
+	_, _ = mac.Write([]byte("composure:csrf:authenticated:v1"))
+	return base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
 }
 
 func adminFixtureAccountID(t *testing.T, base string) string {

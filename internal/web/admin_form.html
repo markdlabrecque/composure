@@ -5,6 +5,7 @@
 {{if .Owner}}<p data-error-code="path_taken">That path is already used by <a href="/admin/pages/{{.Owner.ID}}/edit">{{.Owner.Title}}</a>.</p>{{end}}
 {{range .Errors}}<p data-error-code="{{.Code}}">{{.Message}}</p>{{end}}
 <form method="post" action="{{.Action}}">
+<input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
 {{if .Revision}}<input type="hidden" name="draft_revision" value="{{.Revision}}">{{end}}
 <div><label for="page-title">Title</label><input id="page-title" type="text" name="title" value="{{.Values.title}}" required></div>
 <div><label for="page-path">Path</label><input id="page-path" type="text" name="path" value="{{.Values.path}}" required></div>
@@ -14,4 +15,4 @@
 {{if .HelpText}}<p id="page-field-{{.ID}}-help">{{.HelpText}}</p>{{end}}</div>{{end}}
 <button type="submit">{{.SubmitLabel}}</button></form>
 {{if .PreviewURL}}<p><a href="{{.PreviewURL}}">Preview saved draft</a></p><p>Preview shows the latest saved draft. Save your changes before previewing them.</p>{{end}}
-{{if .PublishURL}}<form method="post" action="{{.PublishURL}}"><input type="hidden" name="draft_revision" value="{{.Revision}}"><button type="submit">Publish saved draft</button></form>{{end}}</main></body></html>
+{{if .PublishURL}}<form method="post" action="{{.PublishURL}}"><input type="hidden" name="csrf_token" value="{{.CSRFToken}}"><input type="hidden" name="draft_revision" value="{{.Revision}}"><button type="submit">Publish saved draft</button></form>{{end}}</main></body></html>

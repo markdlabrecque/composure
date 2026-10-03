@@ -3,6 +3,7 @@ package web
 import (
 	"bytes"
 	"context"
+	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/base64"
 	"fmt"
@@ -25,6 +26,7 @@ type guardFixture struct {
 	accountID  string
 	sessionID  string
 	credential string
+	path       string
 	now        time.Time
 }
 
@@ -63,7 +65,7 @@ func newGuardFixture(t *testing.T, example bool) guardFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return guardFixture{repository: repository, accountID: accountID, sessionID: sessionID, credential: credential, now: now}
+	return guardFixture{repository: repository, accountID: accountID, sessionID: sessionID, credential: credential, path: path, now: now}
 }
 
 func guardRequest(method, target, body string, headers map[string]string) *http.Request {
@@ -86,6 +88,17 @@ func guardServe(f guardFixture, r *http.Request) *httptest.ResponseRecorder {
 
 func guardCookie(credential string) string {
 	return sessionCookieName + "=" + credential
+}
+
+func guardCSRFToken(t *testing.T, credential string) string {
+	t.Helper()
+	raw, err := base64.RawURLEncoding.Strict().DecodeString(credential)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mac := hmac.New(sha256.New, raw)
+	_, _ = mac.Write([]byte("composure:csrf:authenticated:v1"))
+	return base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
 }
 
 func guardAssertSignInRedirect(t *testing.T, w *httptest.ResponseRecorder, secrets ...string) {
@@ -275,7 +288,8 @@ func TestAdminGuardRefusesMutationBeforeParsingAndPreservesStoredState(t *testin
 func TestAdminGuardAllowsValidatedSessionToReachMutatingHandlers(t *testing.T) {
 	f := newGuardFixture(t, false)
 	headers := map[string]string{"Content-Type": "application/x-www-form-urlencoded", "Cookie": guardCookie(f.credential)}
-	create := url.Values{"title": {"Authenticated draft"}, "path": {"/authenticated"}, "body": {"first"}}
+	token := guardCSRFToken(t, f.credential)
+	create := url.Values{"title": {"Authenticated draft"}, "path": {"/authenticated"}, "body": {"first"}, "csrf_token": {token}}
 	w := guardServe(f, guardRequest(http.MethodPost, "/admin/pages", create.Encode(), headers))
 	if w.Code != http.StatusSeeOther {
 		t.Fatalf("authenticated create returned %d, want 303", w.Code)
@@ -285,11 +299,11 @@ func TestAdminGuardAllowsValidatedSessionToReachMutatingHandlers(t *testing.T) {
 		t.Fatalf("authenticated create location=%q", location)
 	}
 	id := strings.TrimSuffix(strings.TrimPrefix(location, "/admin/pages/"), "/edit")
-	save := url.Values{"title": {"Authenticated saved"}, "path": {"/authenticated"}, "body": {"second"}, "draft_revision": {"1"}}
+	save := url.Values{"title": {"Authenticated saved"}, "path": {"/authenticated"}, "body": {"second"}, "draft_revision": {"1"}, "csrf_token": {token}}
 	if got := guardServe(f, guardRequest(http.MethodPost, "/admin/pages/"+id, save.Encode(), headers)).Code; got != http.StatusSeeOther {
 		t.Fatalf("authenticated save returned %d, want 303", got)
 	}
-	if got := guardServe(f, guardRequest(http.MethodPost, "/admin/pages/"+id+"/publish", "draft_revision=2", headers)).Code; got != http.StatusSeeOther {
+	if got := guardServe(f, guardRequest(http.MethodPost, "/admin/pages/"+id+"/publish", url.Values{"draft_revision": {"2"}, "csrf_token": {token}}.Encode(), headers)).Code; got != http.StatusSeeOther {
 		t.Fatalf("authenticated publish returned %d, want 303", got)
 	}
 	snapshot, err := f.repository.PublishedByPath(context.Background(), "/authenticated")

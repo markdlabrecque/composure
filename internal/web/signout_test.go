@@ -8,6 +8,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -81,8 +82,16 @@ func newSignOutFixtureForTest(t *testing.T) signOutFixtureForTest {
 	}
 }
 
-func signOutRequestForTest(method string, credential string) *http.Request {
-	r := httptest.NewRequest(method, "https://127.0.0.1:8443/admin/sign-out", nil)
+func signOutRequestForTest(t *testing.T, method string, credential string) *http.Request {
+	t.Helper()
+	body := ""
+	if method == http.MethodPost && credential != "" {
+		body = url.Values{"csrf_token": {guardCSRFToken(t, credential)}}.Encode()
+	}
+	r := httptest.NewRequest(method, "https://127.0.0.1:8443/admin/sign-out", strings.NewReader(body))
+	if body != "" {
+		r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	}
 	if credential != "" {
 		r.Header.Set("Cookie", sessionCookieName+"="+credential)
 	}
@@ -108,7 +117,7 @@ func signOutAssertUsableForTest(t *testing.T, s *store.Store, digest []byte, at 
 
 func TestSignOutRevokesOnlyCurrentPersistedSessionAndClearsCookie(t *testing.T) {
 	f := newSignOutFixtureForTest(t)
-	w := signOutServeForTest(f, signOutRequestForTest(http.MethodPost, f.currentCredential))
+	w := signOutServeForTest(f, signOutRequestForTest(t, http.MethodPost, f.currentCredential))
 	if w.Code != http.StatusSeeOther || w.Header().Get("Location") != "/admin/sign-in" {
 		t.Fatalf("sign-out response = %d location %q, want 303 /admin/sign-in", w.Code, w.Header().Get("Location"))
 	}
@@ -152,7 +161,7 @@ func TestSignOutRefusesMissingInvalidAndDuplicateCredentialsWithoutRevocation(t 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			f := newSignOutFixtureForTest(t)
-			r := signOutRequestForTest(http.MethodPost, "")
+			r := signOutRequestForTest(t, http.MethodPost, "")
 			for _, cookie := range tc.cookies {
 				r.Header.Add("Cookie", cookie)
 			}
@@ -170,7 +179,7 @@ func TestSignOutSafeMethodsAndCrossOriginPostCannotRevoke(t *testing.T) {
 	for _, method := range []string{http.MethodGet, http.MethodHead, http.MethodOptions} {
 		t.Run(method, func(t *testing.T) {
 			f := newSignOutFixtureForTest(t)
-			w := signOutServeForTest(f, signOutRequestForTest(method, f.currentCredential))
+			w := signOutServeForTest(f, signOutRequestForTest(t, method, f.currentCredential))
 			if w.Code == http.StatusSeeOther && w.Header().Get("Location") == "/admin/sign-in" {
 				t.Fatal("safe method reported successful sign-out")
 			}
@@ -180,7 +189,7 @@ func TestSignOutSafeMethodsAndCrossOriginPostCannotRevoke(t *testing.T) {
 
 	t.Run("cross-origin POST", func(t *testing.T) {
 		f := newSignOutFixtureForTest(t)
-		r := signOutRequestForTest(http.MethodPost, f.currentCredential)
+		r := signOutRequestForTest(t, http.MethodPost, f.currentCredential)
 		r.Header.Set("Origin", "https://attacker.example")
 		w := signOutServeForTest(f, r)
 		if w.Code != http.StatusForbidden {
@@ -193,7 +202,7 @@ func TestSignOutSafeMethodsAndCrossOriginPostCannotRevoke(t *testing.T) {
 func TestSignOutStorageFailureCannotReportSuccessOrClearCookie(t *testing.T) {
 	f := newSignOutFixtureForTest(t)
 	f.repository.revokeErr = errors.New("private test revocation failure")
-	w := signOutServeForTest(f, signOutRequestForTest(http.MethodPost, f.currentCredential))
+	w := signOutServeForTest(f, signOutRequestForTest(t, http.MethodPost, f.currentCredential))
 	if w.Code < 500 || w.Code >= 600 {
 		t.Fatalf("failed revocation returned %d, want a server error", w.Code)
 	}

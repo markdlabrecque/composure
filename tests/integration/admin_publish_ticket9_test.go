@@ -331,7 +331,8 @@ func TestPublishTicket9ConcurrentSamePath(t *testing.T) {
 	for _, id := range ids {
 		go func(id string) {
 			<-start
-			req, err := http.NewRequest("POST", base+"/admin/pages/"+id+"/publish", strings.NewReader("draft_revision=1"))
+			body := url.Values{"draft_revision": {"1"}, "csrf_token": {adminFixtureCSRFToken(t, base)}}.Encode()
+			req, err := http.NewRequest("POST", base+"/admin/pages/"+id+"/publish", strings.NewReader(body))
 			if err != nil {
 				out <- result{id: id, err: err}
 				return
