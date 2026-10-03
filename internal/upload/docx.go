@@ -231,9 +231,7 @@ func ValidateDOCX(data []byte) error {
 }
 
 // preflightDOCXZIP checks archive boundaries before archive/zip can allocate a
-// File for every central-directory record. ZIP64 containers and entries are
-// deliberately unsupported; their EOCD metadata is still parsed enough to
-// enforce the entry ceiling before returning that error.
+// File for every central-directory record.
 func preflightDOCXZIP(data []byte) error {
 	const (
 		eocdSignature       = uint32(0x06054b50)
@@ -246,24 +244,32 @@ func preflightDOCXZIP(data []byte) error {
 	if len(data) < 22 {
 		return errors.New("DOCX ZIP end record is truncated")
 	}
-	eocd := -1
 	searchStart := len(data) - (22 + 65535)
 	if searchStart < 0 {
 		searchStart = 0
 	}
+	var firstErr error
 	for i := len(data) - 22; i >= searchStart; i-- {
 		if binary.LittleEndian.Uint32(data[i:]) != eocdSignature {
 			continue
 		}
 		commentLen := int(binary.LittleEndian.Uint16(data[i+20:]))
-		if i+22+commentLen == len(data) {
-			eocd = i
-			break
+		if i+22+commentLen != len(data) {
+			continue
+		}
+		if err := preflightDOCXZIPAtEOCD(data, i, zip64LocatorSig, zip64EndSig, centralSignature, localSignature, descriptorSignature); err == nil {
+			return nil
+		} else if firstErr == nil {
+			firstErr = err
 		}
 	}
-	if eocd < 0 {
-		return errors.New("DOCX ZIP end record is missing or malformed")
+	if firstErr != nil {
+		return firstErr
 	}
+	return errors.New("DOCX ZIP end record is missing or malformed")
+}
+
+func preflightDOCXZIPAtEOCD(data []byte, eocd int, zip64LocatorSig, zip64EndSig, centralSignature, localSignature, descriptorSignature uint32) error {
 	e := data[eocd:]
 	disk := binary.LittleEndian.Uint16(e[4:])
 	centralDisk := binary.LittleEndian.Uint16(e[6:])
@@ -274,13 +280,14 @@ func preflightDOCXZIP(data []byte) error {
 	count := uint64(count16)
 	centralSize := uint64(centralSize32)
 	centralOffset := uint64(centralOffset32)
+	centralStart := uint64(eocd)
 	hasZIP64Locator := eocd >= 20 && binary.LittleEndian.Uint32(data[eocd-20:]) == zip64LocatorSig
 	zip64 := hasZIP64Locator || diskCount == 0xffff || count16 == 0xffff || centralSize32 == 0xffffffff || centralOffset32 == 0xffffffff
-	if disk != 0 || centralDisk != 0 || (diskCount != count16 && !zip64) {
+	if disk != 0 || centralDisk != 0 {
 		return errors.New("multi-disk DOCX ZIP archives are not supported")
 	}
 	if zip64 {
-		if eocd < 20 || binary.LittleEndian.Uint32(data[eocd-20:]) != zip64LocatorSig {
+		if !hasZIP64Locator {
 			return errors.New("DOCX ZIP64 end metadata is missing")
 		}
 		loc := data[eocd-20 : eocd]
@@ -288,32 +295,43 @@ func preflightDOCXZIP(data []byte) error {
 			return errors.New("multi-disk DOCX ZIP64 archives are not supported")
 		}
 		zoff := binary.LittleEndian.Uint64(loc[8:])
-		if zoff > uint64(eocd-20) || zoff+56 > uint64(eocd-20) || zoff > uint64(len(data)) {
+		locatorOffset := uint64(eocd - 20)
+		if zoff > locatorOffset || locatorOffset-zoff < 56 || zoff > uint64(len(data)) {
 			return errors.New("DOCX ZIP64 end record is out of bounds")
 		}
 		z := data[int(zoff):]
 		zsize := binary.LittleEndian.Uint64(z[4:])
-		if binary.LittleEndian.Uint32(z) != zip64EndSig || zsize < 44 || zoff+12 > uint64(eocd-20) || zsize != uint64(eocd-20)-zoff-12 {
+		if binary.LittleEndian.Uint32(z) != zip64EndSig || zsize < 44 || zoff > math.MaxUint64-12 || zoff+12 > locatorOffset || zsize != locatorOffset-zoff-12 {
 			return errors.New("DOCX ZIP64 end record is malformed")
 		}
 		if binary.LittleEndian.Uint32(z[16:]) != 0 || binary.LittleEndian.Uint32(z[20:]) != 0 {
 			return errors.New("multi-disk DOCX ZIP64 archives are not supported")
 		}
 		diskCount64 := binary.LittleEndian.Uint64(z[24:])
-		count = binary.LittleEndian.Uint64(z[32:])
-		totalCount64 := binary.LittleEndian.Uint64(z[40:])
+		totalCount64 := binary.LittleEndian.Uint64(z[32:])
+		zip64CentralSize := binary.LittleEndian.Uint64(z[40:])
+		zip64CentralOffset := binary.LittleEndian.Uint64(z[48:])
 		if diskCount64 != totalCount64 {
 			return errors.New("multi-disk DOCX ZIP64 archives are not supported")
 		}
-		if count > maxDOCXEntries || totalCount64 > maxDOCXEntries {
+		if diskCount64 != totalCount64 || (count16 != 0xffff && uint64(count16) != totalCount64) || (diskCount != 0xffff && uint64(diskCount) != diskCount64) {
+			return errors.New("DOCX ZIP64 and ZIP entry counts are inconsistent")
+		}
+		if centralSize32 != 0xffffffff && uint64(centralSize32) != zip64CentralSize || centralOffset32 != 0xffffffff && uint64(centralOffset32) != zip64CentralOffset {
+			return errors.New("DOCX ZIP64 and ZIP end metadata disagree")
+		}
+		count = totalCount64
+		centralSize = zip64CentralSize
+		centralOffset = zip64CentralOffset
+		centralStart = zoff
+		if count == 0 || count > maxDOCXEntries {
 			return fmt.Errorf("DOCX ZIP entry count exceeds %d", maxDOCXEntries)
 		}
-		return errors.New("ZIP64 DOCX archives are not supported")
 	}
 	if count == 0 || count > maxDOCXEntries {
 		return fmt.Errorf("DOCX ZIP entry count must be between 1 and %d", maxDOCXEntries)
 	}
-	if centralOffset > uint64(eocd) || centralSize > uint64(eocd)-centralOffset || centralOffset+centralSize != uint64(eocd) {
+	if centralOffset > centralStart || centralSize > centralStart-centralOffset || centralOffset+centralSize != centralStart {
 		return errors.New("DOCX ZIP central directory is out of bounds")
 	}
 	centralEnd := centralOffset + centralSize
@@ -331,20 +349,30 @@ func preflightDOCXZIP(data []byte) error {
 		if recordLen > centralEnd-pos {
 			return errors.New("DOCX ZIP central directory record exceeds its bounds")
 		}
-		if binary.LittleEndian.Uint32(h[20:]) == 0xffffffff || binary.LittleEndian.Uint32(h[24:]) == 0xffffffff || binary.LittleEndian.Uint32(h[42:]) == 0xffffffff {
-			return errors.New("ZIP64 DOCX entries are not supported")
+		compressed32 := binary.LittleEndian.Uint32(h[20:])
+		expanded32 := binary.LittleEndian.Uint32(h[24:])
+		offset32 := binary.LittleEndian.Uint32(h[42:])
+		diskStart16 := binary.LittleEndian.Uint16(h[34:])
+		expanded, compressed, localOffset, diskStart, err := parseDOCXZIP64Extra(
+			h[46+int(nameLen):46+int(nameLen+extraLen)],
+			expanded32 == 0xffffffff, compressed32 == 0xffffffff, offset32 == 0xffffffff, diskStart16 == 0xffff,
+			uint64(expanded32), uint64(compressed32), uint64(offset32), uint32(diskStart16),
+		)
+		if err != nil {
+			return err
 		}
-		if hasDOCXZIP64Extra(h[46+int(nameLen) : 46+int(nameLen+extraLen)]) {
-			return errors.New("ZIP64 DOCX entries are not supported")
+		if diskStart != 0 {
+			return errors.New("multi-disk DOCX ZIP archives are not supported")
 		}
 		r := docxZIPRecord{
 			name:        string(h[46 : 46+int(nameLen)]),
 			flags:       binary.LittleEndian.Uint16(h[8:]),
 			method:      binary.LittleEndian.Uint16(h[10:]),
 			crc:         binary.LittleEndian.Uint32(h[16:]),
-			compressed:  binary.LittleEndian.Uint32(h[20:]),
-			expanded:    binary.LittleEndian.Uint32(h[24:]),
-			localOffset: uint64(binary.LittleEndian.Uint32(h[42:])),
+			compressed:  compressed,
+			expanded:    expanded,
+			localOffset: localOffset,
+			zip64Sizes:  compressed32 == 0xffffffff || expanded32 == 0xffffffff,
 		}
 		if strings.HasSuffix(r.name, "/") && (r.crc != 0 || r.compressed != 0 || r.expanded != 0) {
 			return errors.New("DOCX directory entry contains data")
@@ -369,27 +397,87 @@ func preflightDOCXZIP(data []byte) error {
 }
 
 type docxZIPRecord struct {
-	name                      string
-	flags, method             uint16
-	crc, compressed, expanded uint32
-	localOffset               uint64
+	name                 string
+	flags, method        uint16
+	crc                  uint32
+	compressed, expanded uint64
+	localOffset          uint64
+	zip64Sizes           bool
 }
 
 type docxZIPRange struct{ start, end uint64 }
 
-func hasDOCXZIP64Extra(extra []byte) bool {
-	for len(extra) >= 4 {
+func parseDOCXZIP64Extra(extra []byte, needExpanded, needCompressed, needOffset, needDisk bool, expanded, compressed, offset uint64, disk uint32) (uint64, uint64, uint64, uint32, error) {
+	var zip64 []byte
+	for len(extra) > 0 {
+		if len(extra) < 4 {
+			return 0, 0, 0, 0, errors.New("DOCX ZIP extra field is truncated")
+		}
 		id := binary.LittleEndian.Uint16(extra)
 		n := int(binary.LittleEndian.Uint16(extra[2:]))
 		if n > len(extra)-4 {
-			return true
+			return 0, 0, 0, 0, errors.New("DOCX ZIP extra field exceeds its bounds")
 		}
 		if id == 1 {
-			return true
+			if zip64 != nil {
+				return 0, 0, 0, 0, errors.New("DOCX ZIP64 extra field is duplicated")
+			}
+			zip64 = extra[4 : 4+n]
 		}
 		extra = extra[4+n:]
 	}
-	return len(extra) != 0
+	if (needExpanded || needCompressed || needOffset || needDisk) && zip64 == nil {
+		return 0, 0, 0, 0, errors.New("DOCX ZIP64 extra field is missing")
+	}
+	if zip64 == nil {
+		return expanded, compressed, offset, disk, nil
+	}
+	at := 0
+	read64 := func() (uint64, bool) {
+		if len(zip64)-at < 8 {
+			return 0, false
+		}
+		v := binary.LittleEndian.Uint64(zip64[at:])
+		at += 8
+		return v, true
+	}
+	read32 := func() (uint32, bool) {
+		if len(zip64)-at < 4 {
+			return 0, false
+		}
+		v := binary.LittleEndian.Uint32(zip64[at:])
+		at += 4
+		return v, true
+	}
+	var ok bool
+	if needExpanded {
+		expanded, ok = read64()
+		if !ok {
+			return 0, 0, 0, 0, errors.New("DOCX ZIP64 expanded size is truncated")
+		}
+	}
+	if needCompressed {
+		compressed, ok = read64()
+		if !ok {
+			return 0, 0, 0, 0, errors.New("DOCX ZIP64 compressed size is truncated")
+		}
+	}
+	if needOffset {
+		offset, ok = read64()
+		if !ok {
+			return 0, 0, 0, 0, errors.New("DOCX ZIP64 local offset is truncated")
+		}
+	}
+	if needDisk {
+		disk, ok = read32()
+		if !ok {
+			return 0, 0, 0, 0, errors.New("DOCX ZIP64 disk number is truncated")
+		}
+	}
+	if at != len(zip64) {
+		return 0, 0, 0, 0, errors.New("DOCX ZIP64 extra field has unexpected data")
+	}
+	return expanded, compressed, offset, disk, nil
 }
 
 func docxLocalRecordEnd(data []byte, r docxZIPRecord, centralOffset uint64, localSignature, descriptorSignature uint32) (uint64, error) {
@@ -414,38 +502,41 @@ func docxLocalRecordEnd(data []byte, r docxZIPRecord, centralOffset uint64, loca
 	if flags != r.flags || method != r.method || string(h[30:30+int(nameLen)]) != r.name {
 		return bad()
 	}
-	if hasDOCXZIP64Extra(h[30+int(nameLen) : int(headerLen)]) {
-		return 0, errors.New("ZIP64 DOCX entries are not supported")
-	}
 	lcrc := binary.LittleEndian.Uint32(h[14:])
 	lcomp := binary.LittleEndian.Uint32(h[18:])
 	lexp := binary.LittleEndian.Uint32(h[22:])
-	if lcomp == 0xffffffff || lexp == 0xffffffff {
-		return 0, errors.New("ZIP64 DOCX entries are not supported")
-	}
-	if flags&(1<<3) == 0 {
-		if lcrc != r.crc || lcomp != r.compressed || lexp != r.expanded {
-			return bad()
-		}
-	} else if (lcrc != 0 && lcrc != r.crc) || (lcomp != 0 && lcomp != r.compressed) || (lexp != 0 && lexp != r.expanded) {
+	lexp64, lcomp64, _, _, err := parseDOCXZIP64Extra(h[30+int(nameLen):int(headerLen)], lexp == 0xffffffff, lcomp == 0xffffffff, false, false, uint64(lexp), uint64(lcomp), 0, 0)
+	if err != nil {
 		return bad()
 	}
+	if flags&(1<<3) == 0 {
+		if lcrc != r.crc || lcomp64 != r.compressed || lexp64 != r.expanded {
+			return bad()
+		}
+	} else if (lcrc != 0 && lcrc != r.crc) || (lcomp != 0 && lcomp != 0xffffffff && uint64(lcomp) != r.compressed) || (lexp != 0 && lexp != 0xffffffff && uint64(lexp) != r.expanded) || (lcomp == 0xffffffff && lcomp64 != r.compressed) || (lexp == 0xffffffff && lexp64 != r.expanded) {
+		return bad()
+	}
+	zip64Descriptor := r.zip64Sizes || lcomp == 0xffffffff || lexp == 0xffffffff
 	dataStart := r.localOffset + headerLen
 	if uint64(r.compressed) > centralOffset-dataStart {
 		return bad()
 	}
 	end := dataStart + uint64(r.compressed)
 	if flags&(1<<3) != 0 {
-		if end > centralOffset || centralOffset-end < 12 {
+		descriptorSize := uint64(12)
+		if zip64Descriptor {
+			descriptorSize = 20
+		}
+		if end > centralOffset || centralOffset-end < descriptorSize {
 			return bad()
 		}
 		d := data[int(end):]
-		descriptorLen := uint64(12)
-		if len(d) >= 16 && binary.LittleEndian.Uint32(d) == descriptorSignature && binary.LittleEndian.Uint32(d[4:]) == r.crc && binary.LittleEndian.Uint32(d[8:]) == r.compressed && binary.LittleEndian.Uint32(d[12:]) == r.expanded {
-			descriptorLen = 16
+		descriptorLen := descriptorSize
+		if len(d) >= int(descriptorSize+4) && binary.LittleEndian.Uint32(d) == descriptorSignature && binary.LittleEndian.Uint32(d[4:]) == r.crc && docxDescriptorSizesMatch(d[8:], r.compressed, r.expanded, zip64Descriptor) {
+			descriptorLen += 4
 			d = d[4:]
 		}
-		if len(d) < 12 || binary.LittleEndian.Uint32(d) != r.crc || binary.LittleEndian.Uint32(d[4:]) != r.compressed || binary.LittleEndian.Uint32(d[8:]) != r.expanded {
+		if len(d) < int(descriptorSize) || binary.LittleEndian.Uint32(d) != r.crc || !docxDescriptorSizesMatch(d[4:], r.compressed, r.expanded, zip64Descriptor) {
 			return bad()
 		}
 		end += descriptorLen
@@ -454,6 +545,13 @@ func docxLocalRecordEnd(data []byte, r docxZIPRecord, centralOffset uint64, loca
 		return bad()
 	}
 	return end, nil
+}
+
+func docxDescriptorSizesMatch(data []byte, compressed, expanded uint64, zip64 bool) bool {
+	if zip64 {
+		return len(data) >= 16 && binary.LittleEndian.Uint64(data) == compressed && binary.LittleEndian.Uint64(data[8:]) == expanded
+	}
+	return len(data) >= 8 && compressed <= math.MaxUint32 && expanded <= math.MaxUint32 && uint64(binary.LittleEndian.Uint32(data)) == compressed && uint64(binary.LittleEndian.Uint32(data[4:])) == expanded
 }
 
 func validateDOCXPath(f *zip.File) (string, bool, error) {
