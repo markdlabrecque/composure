@@ -32,6 +32,9 @@ func ValidateSize(kind Kind, size int64, limits SizeLimits, fieldLimit *int64) e
 	if size < 0 {
 		return errors.New("upload size must not be negative")
 	}
+	if limits.Global <= 0 || limits.Image <= 0 || limits.Document <= 0 {
+		return errInvalidSizeLimit
+	}
 
 	var categoryLimit int64
 	switch kind {
@@ -43,9 +46,6 @@ func ValidateSize(kind Kind, size int64, limits SizeLimits, fieldLimit *int64) e
 		return errors.New("unsupported upload kind")
 	}
 
-	if limits.Global <= 0 || categoryLimit <= 0 {
-		return errInvalidSizeLimit
-	}
 	effectiveLimit := limits.Global
 	if categoryLimit < effectiveLimit {
 		effectiveLimit = categoryLimit
