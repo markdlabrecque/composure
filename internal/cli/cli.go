@@ -135,7 +135,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	if _, err = fmt.Fprintf(stdout, "listening on http://%s\n", listener.Addr()); err != nil {
 		return fail(1, err)
 	}
-	if err = web.Server(repository, listener).Serve(listener); err != nil {
+	if err = web.Server(repository, repository, listener).Serve(listener); err != nil {
 		return fail(1, err)
 	}
 	return 0
