@@ -78,6 +78,9 @@ func TestMessagesReturnsDeepCopy(t *testing.T) {
 	first[0].To[0] = "changed@example.test"
 	first[0].Data[0] = 'X'
 	first = append(first, Message{})
+	if len(first) != 2 {
+		t.Fatalf("mutated snapshot count = %d, want 2", len(first))
+	}
 
 	second := server.Messages()
 	if len(second) != 1 {
