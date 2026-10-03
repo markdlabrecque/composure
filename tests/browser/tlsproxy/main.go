@@ -37,12 +37,14 @@ func main() {
 	if err != nil {
 		fatal(err)
 	}
-	proxy := httputil.NewSingleHostReverseProxy(upstream)
-	proxy.Director = func(request *http.Request) {
-		originalHost := request.Host
-		request.URL.Scheme = upstream.Scheme
-		request.URL.Host = upstream.Host
-		request.Host = originalHost
+	proxy := &httputil.ReverseProxy{
+		Rewrite: func(request *httputil.ProxyRequest) {
+			request.Out.URL.Scheme = upstream.Scheme
+			request.Out.URL.Host = upstream.Host
+			request.Out.Host = request.In.Host
+			// Forward the original query so the CLI validates the browser request.
+			request.Out.URL.RawQuery = request.In.URL.RawQuery
+		},
 	}
 	server := &http.Server{
 		Handler:           proxy,
