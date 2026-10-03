@@ -1,6 +1,9 @@
 // Package audit defines the allowlisted event envelope and development/test
 // recorder. Callers are responsible for sourcing every value from trusted,
 // server-owned state; validation can check representation, not provenance.
+// The current failure-code allowlist permits invalid_credentials and
+// throttled only for account.sign_in. Other actions require a nil failure
+// code. Widening this allowlist requires a reviewed contract extension.
 package audit
 
 import (
@@ -36,9 +39,25 @@ type Target struct {
 }
 
 var (
-	uuidV7Pattern = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`)
-	machineValue  = regexp.MustCompile(`^[a-z][a-z0-9]*(?:\.[a-z][a-z0-9]*(?:_[a-z0-9]+)*)*$`)
-	safeCode      = regexp.MustCompile(`^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$`)
+	uuidV7Pattern  = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`)
+	machineValue   = regexp.MustCompile(`^[a-z][a-z0-9]*(?:\.[a-z][a-z0-9]*(?:_[a-z0-9]+)*)*$`)
+	safeCode       = regexp.MustCompile(`^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$`)
+	coveredActions = map[string]struct{}{
+		"account.sign_in":             {},
+		"account.created":             {},
+		"password.changed":            {},
+		"roles.changed":               {},
+		"account.deactivated":         {},
+		"configuration.deployed":      {},
+		"content.published":           {},
+		"content.unpublished":         {},
+		"menu.published":              {},
+		"menu.unpublished":            {},
+		"content.permanently_deleted": {},
+		"configuration.exported":      {},
+		"site.exported":               {},
+		"site.restored":               {},
+	}
 )
 
 func validTime(value string) (time.Time, bool) {
@@ -61,8 +80,8 @@ func (e Event) Validate() error {
 	if _, ok := validTime(e.Time); !ok {
 		return fmt.Errorf("audit event time must be UTC RFC 3339 with milliseconds")
 	}
-	if !machineValue.MatchString(e.Action) {
-		return fmt.Errorf("audit event action must be a machine-readable identifier")
+	if _, ok := coveredActions[e.Action]; !ok {
+		return fmt.Errorf("audit event action is not in the covered action catalog")
 	}
 	if e.Actor != nil && *e.Actor != "local-prototype" && !uuidV7Pattern.MatchString(*e.Actor) {
 		return fmt.Errorf("audit event actor must be a stable actor id")
@@ -85,8 +104,13 @@ func (e Event) Validate() error {
 	if e.Count <= 0 {
 		return fmt.Errorf("audit event count must be positive")
 	}
-	if e.FailureCode != nil && !safeCode.MatchString(*e.FailureCode) {
-		return fmt.Errorf("audit failure code must be a machine-readable value")
+	if e.FailureCode != nil {
+		if !safeCode.MatchString(*e.FailureCode) {
+			return fmt.Errorf("audit failure code must be a machine-readable value")
+		}
+		if e.Action != "account.sign_in" || (*e.FailureCode != "invalid_credentials" && *e.FailureCode != "throttled") {
+			return fmt.Errorf("audit failure code is not allowed for action %q", e.Action)
+		}
 	}
 	windowFields := e.FirstTime != nil || e.LastTime != nil
 	if !windowFields {
