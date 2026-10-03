@@ -22,16 +22,12 @@ type invitationIssuer interface {
 	IssueToken(context.Context, store.TokenDraft, time.Time) (store.Token, string, error)
 }
 
-type invitationClock interface {
-	InvitationNow() time.Time
-}
-
 type invitationFormData struct {
 	Email, CSRFToken string
 	Error            string
 }
 
-func registerInvitationRoutes(mux *http.ServeMux, repository content.Repository, handleAdminPost func(string, http.HandlerFunc)) {
+func registerInvitationRoutes(mux *http.ServeMux, repository content.Repository, handleAdminPost func(string, http.HandlerFunc), now func() time.Time) {
 	mux.HandleFunc("GET /admin/invitations/new", func(w http.ResponseWriter, r *http.Request) {
 		if !invitationAdministrator(w, r) {
 			return
@@ -57,10 +53,7 @@ func registerInvitationRoutes(mux *http.ServeMux, repository content.Repository,
 			http.Error(w, "invitations are temporarily unavailable", http.StatusInternalServerError)
 			return
 		}
-		at := time.Now().UTC()
-		if clock, ok := repository.(invitationClock); ok {
-			at = clock.InvitationNow().UTC()
-		}
+		at := now().UTC()
 		_, _, err := issuer.IssueToken(r.Context(), store.TokenDraft{
 			Purpose: "invitation", Email: &email, ExpiresAt: at.Add(7 * 24 * time.Hour),
 		}, at)

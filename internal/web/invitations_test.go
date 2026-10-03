@@ -20,7 +20,6 @@ import (
 
 type invitationRepositoryForTest struct {
 	*store.Store
-	now        time.Time
 	issueCalls []invitationIssueForTest
 }
 
@@ -30,8 +29,6 @@ type invitationIssueForTest struct {
 	token store.Token
 	raw   string
 }
-
-func (r *invitationRepositoryForTest) InvitationNow() time.Time { return r.now }
 
 func (r *invitationRepositoryForTest) IssueToken(ctx context.Context, draft store.TokenDraft, at time.Time) (store.Token, string, error) {
 	token, raw, err := r.Store.IssueToken(ctx, draft, at)
@@ -62,7 +59,7 @@ func newInvitationFixtureForTest(t *testing.T, administrator, editor bool) invit
 		t.Fatal(err)
 	}
 	return invitationFixtureForTest{
-		repository: &invitationRepositoryForTest{Store: guard.repository, now: guard.now},
+		repository: &invitationRepositoryForTest{Store: guard.repository},
 		accountID:  guard.accountID,
 		credential: credential,
 		path:       guard.path,
@@ -72,7 +69,7 @@ func newInvitationFixtureForTest(t *testing.T, administrator, editor bool) invit
 
 func invitationServeForTest(f invitationFixtureForTest, r *http.Request) *httptest.ResponseRecorder {
 	w := httptest.NewRecorder()
-	Handler(f.repository, "8443").ServeHTTP(w, r)
+	HandlerWithClock(f.repository, "8443", func() time.Time { return f.now }).ServeHTTP(w, r)
 	return w
 }
 
