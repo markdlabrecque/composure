@@ -2,6 +2,8 @@ package config
 
 import (
 	"fmt"
+	"io"
+	"log/slog"
 	"net"
 	"net/mail"
 	"os"
@@ -16,13 +18,27 @@ import (
 // Password is a deployment secret and must not be serialized, logged, or
 // included in audit events.
 type SMTP struct {
-	Host     string
-	Port     int
-	From     string
-	Username string
-	Password string
-	TLS      string
+	Host     string `json:"-"`
+	Port     int    `json:"-"`
+	From     string `json:"-"`
+	Username string `json:"-"`
+	Password string `json:"-"`
+	TLS      string `json:"-"`
 }
+
+// String returns a safe description of SMTP without exposing deployment values.
+func (SMTP) String() string { return "SMTP{redacted}" }
+
+// GoString returns a safe Go-syntax description of SMTP without exposing deployment values.
+func (SMTP) GoString() string { return "SMTP{redacted}" }
+
+// Format keeps fmt's ordinary and debug formatting from exposing deployment values.
+func (SMTP) Format(state fmt.State, verb rune) {
+	_, _ = io.WriteString(state, "SMTP{redacted}")
+}
+
+// LogValue keeps structured slog output from exposing deployment values.
+func (SMTP) LogValue() slog.Value { return slog.StringValue("SMTP{redacted}") }
 
 // LoadSMTP reads and validates COMPOSURE_SMTP_HOST, PORT, FROM, USERNAME,
 // PASSWORD, and TLS from the process environment. All six unset or empty
@@ -50,6 +66,9 @@ func LoadSMTP() (SMTP, error) {
 
 	trimmed := make(map[string]string, len(raw))
 	for key, value := range raw {
+		if key != "PASSWORD" && hasControl(value) {
+			return SMTP{}, fmt.Errorf("invalid SMTP configuration")
+		}
 		trimmed[key] = strings.TrimSpace(value)
 	}
 	host, portText, from := trimmed["HOST"], trimmed["PORT"], trimmed["FROM"]
