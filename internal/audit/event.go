@@ -122,6 +122,9 @@ func (e Event) Validate() error {
 	if e.FirstTime == nil || e.LastTime == nil || e.Outcome != "failure" || e.Actor != nil {
 		return fmt.Errorf("counted audit event requires a failure, null actor, and both window times")
 	}
+	if e.Target == nil || e.Target.Kind != "operation" || e.Target.ID != e.Action {
+		return fmt.Errorf("counted audit event requires the action's operation target")
+	}
 	first, firstOK := validTime(*e.FirstTime)
 	last, lastOK := validTime(*e.LastTime)
 	eventTime, eventOK := validTime(e.Time)
