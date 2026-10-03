@@ -123,13 +123,9 @@ func serveResetRequestPost(w http.ResponseWriter, r *http.Request, repository co
 	if err == nil && account.State == "active" {
 		at := now().UTC()
 		accountID := account.ID
-		_, _, err = repo.IssueToken(r.Context(), store.TokenDraft{
+		_, _, _ = repo.IssueToken(r.Context(), store.TokenDraft{
 			Purpose: "password_reset", AccountID: &accountID, ExpiresAt: at.Add(time.Hour),
 		}, at)
-		if err != nil {
-			http.Error(w, "Reset is temporarily unavailable.", http.StatusInternalServerError)
-			return
-		}
 	}
 	writeResetRequestPage(w, http.StatusOK, resetRequestPageData{})
 }
