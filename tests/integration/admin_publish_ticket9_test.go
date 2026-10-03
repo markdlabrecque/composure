@@ -24,14 +24,18 @@ func admin9Code(t *testing.T, page, code string) {
 	}
 }
 
-func admin9Snapshot(t *testing.T, db *sql.DB, id, title, path, fields string, revision, configRevision int) string {
+func admin9Snapshot(t *testing.T, db *sql.DB, id, title, path, fields string, revision, configRevision int, expectedActors ...string) string {
 	t.Helper()
+	expectedActor := "local-prototype"
+	if len(expectedActors) == 1 {
+		expectedActor = expectedActors[0]
+	}
 	var sid, typ, gotTitle, gotPath, gotFields, at, actor, claimed, owner, pointer string
 	var seq, source, cfg int
 	if err := db.QueryRow(`SELECT s.id,s.type_id,s.title,s.path,s.fields,s.seq,s.source_draft_revision,s.config_revision,s.published_at,s.published_by,r.claimed_at,r.item_id,i.published_snapshot_id FROM snapshots s JOIN items i ON i.id=s.item_id JOIN routes r ON r.item_id=i.id WHERE i.id=?`, id).Scan(&sid, &typ, &gotTitle, &gotPath, &gotFields, &seq, &source, &cfg, &at, &actor, &claimed, &owner, &pointer); err != nil {
 		t.Fatalf("publication did not atomically persist snapshot/route/pointer: %v", err)
 	}
-	if !uuid7.MatchString(sid) || sid == id || typ != "page" || seq != 1 || source != revision || cfg != configRevision || actor != "local-prototype" || !timestamp.MatchString(at) || claimed != at || owner != id || pointer != sid {
+	if !uuid7.MatchString(sid) || sid == id || typ != "page" || seq != 1 || source != revision || cfg != configRevision || actor != expectedActor || !timestamp.MatchString(at) || claimed != at || owner != id || pointer != sid {
 		t.Errorf("wrong publication metadata: snapshot=%s type=%s seq=%d source=%d config=%d at=%s actor=%s claimed=%s owner=%s pointer=%s", sid, typ, seq, source, cfg, at, actor, claimed, owner, pointer)
 	}
 	if _, err := time.Parse("2006-01-02T15:04:05.000Z", at); err != nil {
@@ -54,6 +58,7 @@ func TestPhase1PublishPage(t *testing.T) {
 	site := initSite(t, false)
 	db := openDB(t, site)
 	base, stop := serve(t, site)
+	accountID := adminFixtureAccountID(t, base)
 	title := `Published <script>title & "quote"</script>`
 	body := "\nPublished <script>body</script>\nSecond & line"
 	id := admin7Create(t, base, "Initial", " About-Us/ ")
@@ -88,7 +93,7 @@ func TestPhase1PublishPage(t *testing.T) {
 	if !strings.Contains(strings.ToLower(admin8Text(notice)), "published") {
 		t.Error("successful publication has no edit notice")
 	}
-	sid := admin9Snapshot(t, db, id, title, "/about-us", `{"body":"\nPublished <script>body</script>\nSecond & line"}`, 2, 7)
+	sid := admin9Snapshot(t, db, id, title, "/about-us", `{"body":"\nPublished <script>body</script>\nSecond & line"}`, 2, 7, accountID)
 	after := admin6State(t, db)
 	if scalar[string](t, db, draftQuery) != draftBefore {
 		t.Error("publication changed saved draft or its metadata")
@@ -240,6 +245,7 @@ func TestPublishTicket9FailureRollsBackAndRetries(t *testing.T) {
 	site := initSite(t, true)
 	db := openDB(t, site)
 	base, _ := serve(t, site)
+	accountID := adminFixtureAccountID(t, base)
 	id := admin7Create(t, base, "Saved", "/rollback")
 	// This real SQLite trigger fails route insertion only after a snapshot exists
 	// inside the transaction. The error must unwind that snapshot and the pointer.
@@ -262,7 +268,7 @@ func TestPublishTicket9FailureRollsBackAndRetries(t *testing.T) {
 		t.Fatal(err)
 	}
 	admin9Publish(t, base, id, 1, 303)
-	admin9Snapshot(t, db, id, "Saved", "/rollback", `{"body":"Original body"}`, 1, 1)
+	admin9Snapshot(t, db, id, "Saved", "/rollback", `{"body":"Original body"}`, 1, 1, accountID)
 	admin6HTTP(t, base, "GET", "/rollback", "", nil, 200)
 }
 

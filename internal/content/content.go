@@ -113,6 +113,7 @@ type Repository interface {
 	ListItems(context.Context, string) ([]ItemSummary, error)
 	GetItem(context.Context, string) (Item, error)
 	CreateItem(context.Context, ItemDraft, time.Time) (string, error)
+	CreateItemByActor(context.Context, ItemDraft, time.Time, string) (string, error)
 	SaveDraft(context.Context, string, int, ItemDraft, time.Time, string) (changed bool, err error)
 	Publish(context.Context, string, int, time.Time, string, func(ActiveConfig, StoredDraft) (ItemDraft, []FieldError)) (Snapshot, error)
 }

@@ -109,6 +109,10 @@ func Handler(repository content.Repository, port string) http.Handler {
 		writeTemplate(w, pageFormTemplate, newFormData(definition, nil, nil, nil))
 	})
 	mux.HandleFunc("POST /admin/pages", func(w http.ResponseWriter, r *http.Request) {
+		actor, ok := pageWriteActor(w, r)
+		if !ok {
+			return
+		}
 		if !parseAdminForm(w, r) {
 			return
 		}
@@ -123,7 +127,7 @@ func Handler(repository content.Repository, port string) http.Handler {
 			writeValidationForm(w, definition, values, problems)
 			return
 		}
-		id, err := repository.CreateItem(r.Context(), draft, time.Now())
+		id, err := repository.CreateItemByActor(r.Context(), draft, time.Now(), actor)
 		if err != nil {
 			var taken *content.PathTakenError
 			if errors.As(err, &taken) {
@@ -183,6 +187,10 @@ func Handler(repository content.Repository, port string) http.Handler {
 		_, _ = w.Write(html)
 	})
 	mux.HandleFunc("POST /admin/pages/{id}", func(w http.ResponseWriter, r *http.Request) {
+		actor, ok := pageWriteActor(w, r)
+		if !ok {
+			return
+		}
 		if !parseAdminForm(w, r) {
 			return
 		}
@@ -214,7 +222,7 @@ func Handler(repository content.Repository, port string) http.Handler {
 			writeEditValidationForm(w, item, definition, values, revisionText, problems)
 			return
 		}
-		_, err = repository.SaveDraft(r.Context(), id, revision, draft, time.Now(), "local-prototype")
+		_, err = repository.SaveDraft(r.Context(), id, revision, draft, time.Now(), actor)
 		if err == nil {
 			http.Redirect(w, r, "/admin/pages/"+id+"/edit", http.StatusSeeOther)
 			return
@@ -244,6 +252,10 @@ func Handler(repository content.Repository, port string) http.Handler {
 		http.Error(w, "cannot save Page", http.StatusInternalServerError)
 	})
 	mux.HandleFunc("POST /admin/pages/{id}/publish", func(w http.ResponseWriter, r *http.Request) {
+		actor, ok := pageWriteActor(w, r)
+		if !ok {
+			return
+		}
 		if !parseAdminForm(w, r) {
 			return
 		}
@@ -254,7 +266,7 @@ func Handler(repository content.Repository, port string) http.Handler {
 				formProblem{Field: "draft_revision", Code: "invalid_revision", Message: "Reload the saved draft before publishing."}, nil)
 			return
 		}
-		_, err := repository.Publish(r.Context(), r.PathValue("id"), revision, time.Now(), "local-prototype", content.ValidateStoredPageDraft)
+		_, err := repository.Publish(r.Context(), r.PathValue("id"), revision, time.Now(), actor, content.ValidateStoredPageDraft)
 		if err == nil {
 			http.Redirect(w, r, "/admin/pages/"+r.PathValue("id")+"/edit?notice=published", http.StatusSeeOther)
 			return

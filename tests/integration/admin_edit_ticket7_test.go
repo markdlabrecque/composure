@@ -121,10 +121,11 @@ func TestPhase1EditDraft(t *testing.T) {
 	db := openDB(t, site)
 	admin6Custom(t, db)
 	base, stop := serve(t, site)
+	accountID := adminFixtureAccountID(t, base)
 	id := admin7Create(t, base, "First <script>draft</script>", "/first")
 	otherID := admin7Create(t, base, "Other draft", "/second")
 	// A fixed old fixture timestamp makes changed metadata deterministic without sleeps.
-	if _, err := db.Exec("UPDATE items SET created_at='2026-01-01T00:00:00.000Z',updated_at='2026-01-01T00:00:00.000Z' WHERE id=?", id); err != nil {
+	if _, err := db.Exec("UPDATE items SET created_at='2026-01-01T00:00:00.000Z',updated_at='2026-01-01T00:00:00.000Z',created_by='local-prototype' WHERE id=?", id); err != nil {
 		t.Fatal(err)
 	}
 	before := admin6State(t, db)
@@ -168,7 +169,7 @@ func TestPhase1EditDraft(t *testing.T) {
 	}
 	want, _ := json.Marshal(map[string]string{"body": admin6Newlines(v.Get("body")), "strapline": v.Get("strapline")})
 	equalJSON(t, fields, want)
-	if created != "2026-01-01T00:00:00.000Z" || updated == created || !timestamp.MatchString(updated) || creator != "local-prototype" || updater != creator || typ != "page" || published.Valid {
+	if created != "2026-01-01T00:00:00.000Z" || updated == created || !timestamp.MatchString(updated) || creator != "local-prototype" || updater != accountID || typ != "page" || published.Valid {
 		t.Errorf("save violated metadata: %s/%s actors=%s/%s type=%s published=%v", created, updated, creator, updater, typ, published)
 	}
 	if scalar[int](t, db, "SELECT count(*) FROM items") != 3 {
