@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/markdlabrecque/composure/internal/audit"
 	"github.com/markdlabrecque/composure/internal/config"
 	"github.com/markdlabrecque/composure/internal/content"
 	"github.com/markdlabrecque/composure/internal/render"
@@ -582,7 +583,8 @@ func writeTemplateStatus(w http.ResponseWriter, status int, page *template.Templ
 	}
 }
 
-func Server(repository content.Repository, listener net.Listener) *http.Server {
+func Server(repository content.Repository, recorder audit.Recorder, listener net.Listener) *http.Server {
 	_, port, _ := net.SplitHostPort(listener.Addr().String())
-	return &http.Server{Handler: Handler(repository, port), ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 60 * time.Second}
+	handler := &auditRecorderHandler{Handler: Handler(repository, port), recorder: recorder}
+	return &http.Server{Handler: handler, ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 60 * time.Second}
 }

@@ -134,8 +134,10 @@ func (e Event) Validate() error {
 	return nil
 }
 
-// Recorder records one event. A successful return only reflects the sink's
-// Write result; it does not promise stable storage or atomicity with other data.
+// Recorder records one event. Its successful-return guarantee depends on the
+// implementation: the log recorder reports its sink Write result, while the
+// Store recorder reports a committed SQLite append. Neither couples a separate
+// domain-state change to the event without an explicit shared transaction.
 type Recorder interface {
 	Record(context.Context, Event) error
 }

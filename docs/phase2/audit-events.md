@@ -1,6 +1,6 @@
 # Audit events
 
-Status: Contract sections completed through #58–#61. The linked sections define the event envelope, covered actions and recording time, redaction, and counted failures and retention. Recorder durability and state-commit boundaries remain follow-up work in #191, coordinated with #79/#131.
+Status: Contract sections completed through #58–#61. The linked sections define the event envelope, covered actions and recording time, redaction, and counted failures and retention. The #79 log-line recorder reports sink write acceptance; the #131 SQLite recorder reports a committed single-event append. Neither makes an independent domain-state change atomic with the event. Crash and interrupted-work guarantees remain for #191, coordinated with #79/#131.
 
 - [01 Event envelope](audit-events/01-envelope.md)
 - [02 Covered actions and recording time](audit-events/02-actions.md)
