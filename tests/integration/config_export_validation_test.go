@@ -294,6 +294,42 @@ func TestConfig11ExportCanonicalSQLiteAndNoMutation(t *testing.T) {
 	}
 }
 
+func TestConfigExportOmitsSMTPEnvironment(t *testing.T) {
+	sentinels := map[string]string{
+		"COMPOSURE_SMTP_HOST":     "smtp-export-canary.invalid",
+		"COMPOSURE_SMTP_PORT":     "2525",
+		"COMPOSURE_SMTP_FROM":     "export-canary@example.invalid",
+		"COMPOSURE_SMTP_USERNAME": "smtp-export-user-canary",
+		"COMPOSURE_SMTP_PASSWORD": "smtp-export-password-canary",
+		"COMPOSURE_SMTP_TLS":      "implicit",
+	}
+	for name, value := range sentinels {
+		t.Setenv(name, value)
+	}
+
+	site := initSite(t, false)
+	out := filepath.Join(t.TempDir(), "export.json")
+	config11Command(t, root, 0, "", "", "export", "--site", site, "--out", out)
+	exported := readFile(t, out)
+
+	var document map[string]json.RawMessage
+	if err := json.Unmarshal(exported, &document); err != nil {
+		t.Fatalf("decode exported configuration: %v", err)
+	}
+	if got := len(document); got != 2 || document["format_version"] == nil || document["content_types"] == nil {
+		t.Errorf("exported root keys = %v, want only format_version and content_types", reflect.ValueOf(document).MapKeys())
+	}
+	text := string(exported)
+	if strings.Contains(strings.ToLower(text), "smtp") {
+		t.Error("export contains an SMTP key")
+	}
+	for name, sentinel := range sentinels {
+		if strings.Contains(text, sentinel) {
+			t.Errorf("export contains the value of %s", name)
+		}
+	}
+}
+
 func TestConfig11ExportIntegerUnicodeAndEmptyArray(t *testing.T) {
 	site := initSite(t, false)
 	out := filepath.Join(t.TempDir(), "out.json")
