@@ -56,7 +56,7 @@ func newActorHTTPFixture(t *testing.T, example *content.Snapshot) *actorHTTPFixt
 	}
 	raw := bytes.Repeat([]byte{0xa2}, 32)
 	digest := sha256.Sum256(raw)
-	if _, err := repository.CreateSession(ctx, store.SessionDraft{AccountID: accountID, TokenDigest: digest[:]}, at); err != nil {
+	if _, err := repository.CreateSession(ctx, store.SessionDraft{AccountID: accountID, TokenDigest: digest[:]}, time.Now().UTC()); err != nil {
 		t.Fatal(err)
 	}
 	fixture := &actorHTTPFixture{
