@@ -87,6 +87,10 @@ func Handler(repository content.Repository, port string) http.Handler {
 // HandlerWithClock constructs the server handler with an explicit server clock.
 // The clock is shared with routes whose persisted values depend on server time.
 func HandlerWithClock(repository content.Repository, port string, now func() time.Time) http.Handler {
+	return handlerWithClockAndDelivery(repository, port, now, invitationDeliveryFromRepository(repository))
+}
+
+func handlerWithClockAndDelivery(repository content.Repository, port string, now func() time.Time, delivery invitationDelivery) http.Handler {
 	mux := http.NewServeMux()
 	handlePageRead := func(pattern string, handler http.HandlerFunc) {
 		mux.Handle(pattern, PermissionMiddleware(auth.Action("content.read"), handler))
@@ -99,7 +103,7 @@ func HandlerWithClock(repository content.Repository, port string, now func() tim
 		fmt.Fprintln(w, "ok")
 	})
 	registerSignInRoutes(mux, repository)
-	registerInvitationRoutes(mux, repository, handleAdminPost, now)
+	registerInvitationRoutes(mux, repository, handleAdminPost, now, delivery)
 	registerResetRequestRoutes(mux, repository, now)
 	handleAdminPost("POST /admin/sign-out", func(w http.ResponseWriter, r *http.Request) { serveSignOut(w, r, repository) })
 	mux.HandleFunc("GET /admin/static/admin.css", func(w http.ResponseWriter, r *http.Request) {
@@ -589,6 +593,9 @@ func writeTemplateStatus(w http.ResponseWriter, status int, page *template.Templ
 
 func Server(repository content.Repository, recorder audit.Recorder, listener net.Listener) *http.Server {
 	_, port, _ := net.SplitHostPort(listener.Addr().String())
-	handler := &auditRecorderHandler{Handler: Handler(repository, port), recorder: recorder}
+	handler := &auditRecorderHandler{
+		Handler:  handlerWithClockAndDelivery(repository, port, time.Now, configuredInvitationDelivery()),
+		recorder: recorder,
+	}
 	return &http.Server{Handler: handler, ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 60 * time.Second}
 }
