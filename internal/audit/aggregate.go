@@ -13,6 +13,8 @@ import (
 
 const aggregateGroupCount = 5
 
+const defaultAggregateShutdownFlushTimeout = time.Second
+
 // FailureGroup identifies one fixed, supported class of authentication failure.
 // Its values are validated against the contract allowlist before they are kept.
 type FailureGroup struct {
@@ -24,8 +26,10 @@ type FailureGroup struct {
 type AggregateOptions struct {
 	Capacity      int
 	FlushInterval time.Duration
-	Now           func() time.Time
-	NewID         func() (string, error)
+	// ShutdownFlushTimeout bounds the final flush attempt; zero selects one second.
+	ShutdownFlushTimeout time.Duration
+	Now                  func() time.Time
+	NewID                func() (string, error)
 }
 
 type failureKey struct {
@@ -51,9 +55,10 @@ type AggregateRecorder struct {
 	pending  map[failureKey]failureWindow
 	inFlight map[failureKey]failureWindow
 
-	flushMu sync.Mutex
-	runMu   sync.Mutex
-	runOnce bool
+	flushSlot            chan struct{}
+	shutdownFlushTimeout time.Duration
+	runMu                sync.Mutex
+	runOnce              bool
 }
 
 var supportedFailureGroups = [...]failureKey{
@@ -76,6 +81,9 @@ func NewAggregateRecorder(sink Recorder, options AggregateOptions) (*AggregateRe
 	if options.FlushInterval < 0 {
 		return nil, errors.New("aggregate audit flush interval cannot be negative")
 	}
+	if options.ShutdownFlushTimeout < 0 {
+		return nil, errors.New("aggregate audit shutdown flush timeout cannot be negative")
+	}
 	if options.Now == nil {
 		options.Now = time.Now
 	}
@@ -85,13 +93,20 @@ func NewAggregateRecorder(sink Recorder, options AggregateOptions) (*AggregateRe
 	if options.FlushInterval == 0 {
 		options.FlushInterval = time.Minute
 	}
+	if options.ShutdownFlushTimeout == 0 {
+		options.ShutdownFlushTimeout = defaultAggregateShutdownFlushTimeout
+	}
+	flushSlot := make(chan struct{}, 1)
+	flushSlot <- struct{}{}
 	return &AggregateRecorder{
-		sink:          sink,
-		flushInterval: options.FlushInterval,
-		now:           options.Now,
-		newID:         options.NewID,
-		pending:       make(map[failureKey]failureWindow, aggregateGroupCount),
-		inFlight:      make(map[failureKey]failureWindow, aggregateGroupCount),
+		sink:                 sink,
+		flushInterval:        options.FlushInterval,
+		shutdownFlushTimeout: options.ShutdownFlushTimeout,
+		flushSlot:            flushSlot,
+		now:                  options.Now,
+		newID:                options.NewID,
+		pending:              make(map[failureKey]failureWindow, aggregateGroupCount),
+		inFlight:             make(map[failureKey]failureWindow, aggregateGroupCount),
 	}, nil
 }
 
@@ -157,8 +172,15 @@ func (r *AggregateRecorder) Flush(ctx context.Context) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	r.flushMu.Lock()
-	defer r.flushMu.Unlock()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-r.flushSlot:
+	}
+	defer func() { r.flushSlot <- struct{}{} }()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 
 	r.mu.Lock()
 	captured := r.pending
@@ -246,8 +268,10 @@ func (r *AggregateRecorder) restoreCaptured(captured map[failureKey]failureWindo
 	}
 }
 
-// Run periodically flushes pending groups and performs a final uncanceled flush
-// after shutdown. It returns only after its worker has stopped.
+// Run periodically flushes pending groups and attempts a final flush after
+// shutdown with an independent deadline. The sink must honor context
+// cancellation for shutdown to return within that deadline; writes stay
+// synchronous so the worker joins each sink call before returning.
 func (r *AggregateRecorder) Run(ctx context.Context) error {
 	r.runMu.Lock()
 	if r.runOnce {
@@ -262,7 +286,10 @@ func (r *AggregateRecorder) Run(ctx context.Context) error {
 	for {
 		select {
 		case <-ctx.Done():
-			return r.Flush(context.Background())
+			flushCtx, cancel := context.WithTimeout(context.Background(), r.shutdownFlushTimeout)
+			err := r.Flush(flushCtx)
+			cancel()
+			return err
 		case <-ticker.C:
 			// A failed periodic flush retains its window for the next cadence.
 			_ = r.Flush(ctx)
