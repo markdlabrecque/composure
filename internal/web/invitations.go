@@ -5,11 +5,13 @@ import (
 	"embed"
 	"html/template"
 	"net/http"
+	stdmail "net/mail"
 	"strings"
 	"time"
 
 	"github.com/markdlabrecque/composure/internal/auth"
 	"github.com/markdlabrecque/composure/internal/content"
+	"github.com/markdlabrecque/composure/internal/mail"
 	"github.com/markdlabrecque/composure/internal/store"
 )
 
@@ -27,7 +29,7 @@ type invitationFormData struct {
 	Error            string
 }
 
-func registerInvitationRoutes(mux *http.ServeMux, repository content.Repository, handleAdminPost func(string, http.HandlerFunc), now func() time.Time) {
+func registerInvitationRoutes(mux *http.ServeMux, repository content.Repository, handleAdminPost func(string, http.HandlerFunc), now func() time.Time, delivery invitationDelivery) {
 	mux.HandleFunc("GET /admin/invitations/new", func(w http.ResponseWriter, r *http.Request) {
 		if !invitationAdministrator(w, r) {
 			return
@@ -44,8 +46,17 @@ func registerInvitationRoutes(mux *http.ServeMux, repository content.Repository,
 			return
 		}
 		email := canonicalInvitationEmail(emails[0])
-		if email == "" {
+		parsedEmail, parseErr := stdmail.ParseAddress(email)
+		if email == "" || !strings.Contains(email, "@") || parseErr != nil || parsedEmail.Name != "" || parsedEmail.Address != email {
 			writeInvitationForm(w, http.StatusUnprocessableEntity, r, invitationFormData{Email: emails[0], Error: "Enter one email address."})
+			return
+		}
+		if delivery.err != nil {
+			http.Error(w, "invitation delivery is temporarily unavailable", http.StatusInternalServerError)
+			return
+		}
+		if delivery.enabled && (delivery.publicURL == nil || delivery.send == nil) {
+			http.Error(w, "invitation delivery is temporarily unavailable", http.StatusInternalServerError)
 			return
 		}
 		issuer, ok := repository.(invitationIssuer)
@@ -54,12 +65,23 @@ func registerInvitationRoutes(mux *http.ServeMux, repository content.Repository,
 			return
 		}
 		at := now().UTC()
-		_, _, err := issuer.IssueToken(r.Context(), store.TokenDraft{
+		_, rawToken, err := issuer.IssueToken(r.Context(), store.TokenDraft{
 			Purpose: "invitation", Email: &email, ExpiresAt: at.Add(7 * 24 * time.Hour),
 		}, at)
 		if err != nil {
 			http.Error(w, "cannot issue invitation", http.StatusInternalServerError)
 			return
+		}
+		if delivery.enabled {
+			link := delivery.invitationURL(rawToken)
+			message := mail.Message{
+				To: email, Subject: "Your Composure invitation",
+				Body: "Use this link to accept your Composure invitation:\n\n" + link + "\n",
+			}
+			if err := delivery.send(r.Context(), delivery.relay, message); err != nil {
+				http.Error(w, "invitation delivery failed", http.StatusInternalServerError)
+				return
+			}
 		}
 		http.Redirect(w, r, "/admin/invitations/new?notice=issued", http.StatusSeeOther)
 	})
