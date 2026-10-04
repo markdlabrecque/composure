@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/markdlabrecque/composure/internal/audit"
+	"github.com/markdlabrecque/composure/internal/auth"
 	"github.com/markdlabrecque/composure/internal/config"
 	"github.com/markdlabrecque/composure/internal/content"
 	"github.com/markdlabrecque/composure/internal/render"
@@ -87,6 +88,9 @@ func Handler(repository content.Repository, port string) http.Handler {
 // The clock is shared with routes whose persisted values depend on server time.
 func HandlerWithClock(repository content.Repository, port string, now func() time.Time) http.Handler {
 	mux := http.NewServeMux()
+	handlePageRead := func(pattern string, handler http.HandlerFunc) {
+		mux.Handle(pattern, PermissionMiddleware(auth.Action("content.read"), handler))
+	}
 	handleAdminPost := func(pattern string, handler http.HandlerFunc) {
 		mux.Handle(pattern, authenticatedPost(handler))
 	}
@@ -102,10 +106,10 @@ func HandlerWithClock(repository content.Repository, port string, now func() tim
 		w.Header().Set("Content-Type", "text/css; charset=utf-8")
 		_, _ = w.Write([]byte(adminCSS))
 	})
-	mux.HandleFunc("GET /admin", func(w http.ResponseWriter, r *http.Request) {
+	handlePageRead("GET /admin", func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/admin/pages", http.StatusSeeOther)
 	})
-	mux.HandleFunc("GET /admin/pages", func(w http.ResponseWriter, r *http.Request) {
+	handlePageRead("GET /admin/pages", func(w http.ResponseWriter, r *http.Request) {
 		items, err := repository.ListItems(r.Context(), "page")
 		if err != nil {
 			http.Error(w, "cannot load Pages", http.StatusInternalServerError)
@@ -113,7 +117,7 @@ func HandlerWithClock(repository content.Repository, port string, now func() tim
 		}
 		writeTemplate(w, pageListTemplate, items)
 	})
-	mux.HandleFunc("GET /admin/pages/new", func(w http.ResponseWriter, r *http.Request) {
+	handlePageRead("GET /admin/pages/new", func(w http.ResponseWriter, r *http.Request) {
 		definition, err := activePageDefinition(r.Context(), repository)
 		if err != nil {
 			http.Error(w, "cannot load Page configuration", http.StatusInternalServerError)
@@ -151,7 +155,7 @@ func HandlerWithClock(repository content.Repository, port string, now func() tim
 		}
 		http.Redirect(w, r, "/admin/pages/"+id+"/edit", http.StatusSeeOther)
 	})
-	mux.HandleFunc("GET /admin/pages/{id}/edit", func(w http.ResponseWriter, r *http.Request) {
+	handlePageRead("GET /admin/pages/{id}/edit", func(w http.ResponseWriter, r *http.Request) {
 		item, err := repository.GetItem(r.Context(), r.PathValue("id"))
 		if errors.Is(err, content.ErrNotFound) {
 			http.NotFound(w, r)
@@ -172,7 +176,7 @@ func HandlerWithClock(repository content.Repository, port string, now func() tim
 		}
 		writePageForm(w, r, http.StatusOK, data)
 	})
-	mux.HandleFunc("GET /admin/pages/{id}/preview", func(w http.ResponseWriter, r *http.Request) {
+	handlePageRead("GET /admin/pages/{id}/preview", func(w http.ResponseWriter, r *http.Request) {
 		item, err := repository.GetItem(r.Context(), r.PathValue("id"))
 		if errors.Is(err, content.ErrNotFound) {
 			http.NotFound(w, r)
