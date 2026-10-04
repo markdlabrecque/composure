@@ -29,7 +29,6 @@ var (
 	errAuth           = errors.New("SMTP authentication failed")
 	errEnvelope       = errors.New("SMTP envelope was rejected")
 	errDelivery       = errors.New("SMTP message delivery failed")
-	errClose          = errors.New("SMTP connection shutdown failed")
 )
 
 // Message is a single plain-text email. To is the sole envelope recipient.
@@ -128,10 +127,15 @@ func Send(ctx context.Context, relay config.SMTP, message Message, options ...Op
 		}
 	}
 	if relay.Username != "" {
+		var auth smtp.Auth = smtp.PlainAuth("", relay.Username, relay.Password, relay.Host)
 		if !secure {
-			return errInvalidRelay
+			auth = loopbackPlainAuth{
+				username: relay.Username,
+				password: relay.Password,
+				host:     relay.Host,
+			}
 		}
-		if err := client.Auth(smtp.PlainAuth("", relay.Username, relay.Password, relay.Host)); err != nil {
+		if err := client.Auth(auth); err != nil {
 			return contextFailure(ctx, errAuth)
 		}
 	}
@@ -152,11 +156,32 @@ func Send(ctx context.Context, relay config.SMTP, message Message, options ...Op
 	if err := writer.Close(); err != nil {
 		return contextFailure(ctx, errDelivery)
 	}
-	if err := client.Quit(); err != nil {
-		return contextFailure(ctx, errClose)
-	}
+	// A successful DATA close means the relay accepted the message. QUIT is
+	// bounded best-effort cleanup; its failure cannot turn delivery into a
+	// reported failure that a caller might retry as a duplicate.
+	_ = client.Quit()
 	clientOpen = false
 	return nil
+}
+
+type loopbackPlainAuth struct {
+	username string
+	password string
+	host     string
+}
+
+func (a loopbackPlainAuth) Start(server *smtp.ServerInfo) (string, []byte, error) {
+	if server.TLS || server.Name != a.host || !localHost(a.host) {
+		return "", nil, errors.New("unencrypted connection")
+	}
+	return "PLAIN", []byte("\x00" + a.username + "\x00" + a.password), nil
+}
+
+func (loopbackPlainAuth) Next(_ []byte, more bool) ([]byte, error) {
+	if more {
+		return nil, errors.New("unexpected SMTP authentication challenge")
+	}
+	return nil, nil
 }
 
 func contextFailure(ctx context.Context, fallback error) error {
@@ -183,7 +208,7 @@ func validateRelay(relay config.SMTP) error {
 	switch mode {
 	case "starttls", "implicit":
 	case "plaintext":
-		if !localHost(relay.Host) || relay.Username != "" {
+		if !localHost(relay.Host) {
 			return errInvalidRelay
 		}
 	default:
