@@ -30,6 +30,8 @@ administrator initialization, password, and email boundary tests.
 Run `go test ./...` for Go tests. Run
 `go test ./... -run TestPhase1InitializeAndServe -count=1` for the focused
 process tests. These build and start the real CLI with temporary SQLite sites.
+For the upload kind detector's fixed seeds and bounded local fuzz campaign,
+see [the Phase 2 validator fuzz check](phase2/type-validator-fuzz.md).
 For publication regressions, run
 `go test ./tests/integration -run 'TestPhase1PublishPage|TestPublishTicket9' -count=1`.
 This exercises the real admin/public handlers and SQLite publication
