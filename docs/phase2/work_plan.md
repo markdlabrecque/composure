@@ -1,10 +1,99 @@
 # Phase 2 work plan: parallel lanes
 
-Status: active, progress updated 2026-10-02. Lane and wave layout written 2026-09-30 from `docs/phase2/tickets.md` and GitHub issues #58 to #176 in the Phase 2 milestone. Scope decision: Phase 2 is development-only; use the Debian-based Docker harness for automated deployment/security checks. No real sites exist and no existing-site upgrades are required. Human security signoff and real Hetzner evidence are deferred beyond Phase 2; the harness is not approval or host evidence, and production remains blocked pending those release requirements.
+Status: active, progress updated 2026-10-03. New ticket dispatch is stopped at Mark's request; #87 is the current integration ticket. Lane and wave layout written 2026-09-30 from `docs/phase2/tickets.md` and GitHub issues #58 to #176 in the Phase 2 milestone. Scope decision: Phase 2 is development-only; use the Debian-based Docker harness for automated deployment/security checks. No real sites exist and no existing-site upgrades are required. Human security signoff and real Hetzner evidence are deferred beyond Phase 2; the harness is not approval or host evidence, and production remains blocked pending those release requirements.
 
-## Progress as of 2026-10-02
+## Progress as of 2026-10-03
 
-The latest batch is merged into `phase-2`, summarized on GitHub, closed as completed, and retired. The batch ends at merge commit `cd580be9ff36402df50b5f161357386e04443dfb`; the subsequent documentation snapshot is `949253da6ee8c9f96dde8e4de728c115d2713014`, which adds the progress and ticket-session pilot documentation. Each ticket has independent final approval and passing required hosted `Composure checks` for its publication head. The completion summaries identify the local-gate candidate and CI-tested revision separately; historical local runs are not attributed to later checkpoint-only heads.
+GitHub records 54 Phase 2 delivery issues closed as completed at the 2026-10-04 04:38 UTC snapshot, which is October 3 locally. These comprise 52 original tickets and follow-ups #227 and #240. The latest completed integration is #240, merged in [PR #241](https://github.com/markdlabrecque/composure/pull/241) at `2781210ab369f0cab251a4da2131477cf8c51831`. Its [completion summary](https://github.com/markdlabrecque/composure/issues/240#issuecomment-5976309761) records review, local gates, required CI and closeout evidence.
+
+### Completed tickets
+
+The following inventory includes every completed delivery issue in the snapshot. Each issue links to its delivery discussion and completion evidence. Related decision issues #189 and #197 are also closed and are counted separately. Do not redispatch completed work. The lane and wave tables below retain the original dependency layout.
+
+| Completed issue | Delivered scope |
+| --- | --- |
+| [#58](https://github.com/markdlabrecque/composure/issues/58) | Audit contract: event envelope |
+| [#59](https://github.com/markdlabrecque/composure/issues/59) | Audit contract: covered actions and timing |
+| [#60](https://github.com/markdlabrecque/composure/issues/60) | Audit contract: redaction allowlist |
+| [#61](https://github.com/markdlabrecque/composure/issues/61) | Audit contract: throttling, counted failures, flush and retention |
+| [#62](https://github.com/markdlabrecque/composure/issues/62) | Access contract: account and session tables |
+| [#63](https://github.com/markdlabrecque/composure/issues/63) | Access contract: invitation and reset tokens |
+| [#64](https://github.com/markdlabrecque/composure/issues/64) | Access contract: password hashing |
+| [#65](https://github.com/markdlabrecque/composure/issues/65) | Access contract: session cookie and CSRF rules |
+| [#66](https://github.com/markdlabrecque/composure/issues/66) | Access contract: throttle counters and backoff |
+| [#67](https://github.com/markdlabrecque/composure/issues/67) | Access contract: role permission matrix |
+| [#68](https://github.com/markdlabrecque/composure/issues/68) | Access contract: session revocation triggers |
+| [#69](https://github.com/markdlabrecque/composure/issues/69) | Access contract: CLI command and HTTP route inventory |
+| [#70](https://github.com/markdlabrecque/composure/issues/70) | Accounts table and store methods |
+| [#71](https://github.com/markdlabrecque/composure/issues/71) | Password hashing package |
+| [#72](https://github.com/markdlabrecque/composure/issues/72) | First administrator on init |
+| [#73](https://github.com/markdlabrecque/composure/issues/73) | Sessions table and store methods |
+| [#74](https://github.com/markdlabrecque/composure/issues/74) | Session cookie middleware |
+| [#75](https://github.com/markdlabrecque/composure/issues/75) | Sign-in route and screen |
+| [#76](https://github.com/markdlabrecque/composure/issues/76) | Sign-out route |
+| [#77](https://github.com/markdlabrecque/composure/issues/77) | Throttle counter store and backoff |
+| [#78](https://github.com/markdlabrecque/composure/issues/78) | Throttle sign-in before hashing |
+| [#79](https://github.com/markdlabrecque/composure/issues/79) | Minimal audit recorder interface |
+| [#81](https://github.com/markdlabrecque/composure/issues/81) | Reject unauthenticated admin requests |
+| [#82](https://github.com/markdlabrecque/composure/issues/82) | Replace the local-prototype actor |
+| [#83](https://github.com/markdlabrecque/composure/issues/83) | Require a session on draft preview |
+| [#84](https://github.com/markdlabrecque/composure/issues/84) | CSRF tokens on state-changing forms |
+| [#85](https://github.com/markdlabrecque/composure/issues/85) | SMTP relay configuration from deployment secrets |
+| [#86](https://github.com/markdlabrecque/composure/issues/86) | In-process SMTP capture server for tests |
+| [#88](https://github.com/markdlabrecque/composure/issues/88) | Token table and store methods |
+| [#89](https://github.com/markdlabrecque/composure/issues/89) | Invitation form and token issue |
+| [#95](https://github.com/markdlabrecque/composure/issues/95) | Request-reset form with generic response |
+| [#101](https://github.com/markdlabrecque/composure/issues/101) | Common-password list package |
+| [#106](https://github.com/markdlabrecque/composure/issues/106) | Permission matrix package |
+| [#107](https://github.com/markdlabrecque/composure/issues/107) | Route permission middleware |
+| [#111](https://github.com/markdlabrecque/composure/issues/111) | CLI operator principal |
+| [#114](https://github.com/markdlabrecque/composure/issues/114) | Last active administrator guard |
+| [#126](https://github.com/markdlabrecque/composure/issues/126) | Site settings table and store |
+| [#130](https://github.com/markdlabrecque/composure/issues/130) | Audit events table and store |
+| [#131](https://github.com/markdlabrecque/composure/issues/131) | SQLite audit recorder |
+| [#134](https://github.com/markdlabrecque/composure/issues/134) | Paged audit query |
+| [#136](https://github.com/markdlabrecque/composure/issues/136) | Upload contract document |
+| [#137](https://github.com/markdlabrecque/composure/issues/137) | File type allowlist validator |
+| [#138](https://github.com/markdlabrecque/composure/issues/138) | Size limit validator |
+| [#139](https://github.com/markdlabrecque/composure/issues/139) | Image dimension validator before decoding |
+| [#140](https://github.com/markdlabrecque/composure/issues/140) | DOCX ZIP structure validator |
+| [#141](https://github.com/markdlabrecque/composure/issues/141) | SHA-256 content-hash storage names |
+| [#149](https://github.com/markdlabrecque/composure/issues/149) | Image re-encode with metadata removed |
+| [#150](https://github.com/markdlabrecque/composure/issues/150) | Single image worker per site |
+| [#170](https://github.com/markdlabrecque/composure/issues/170) | govulncheck in CI |
+| [#171](https://github.com/markdlabrecque/composure/issues/171) | staticcheck in CI |
+| [#172](https://github.com/markdlabrecque/composure/issues/172) | Fix the four current staticcheck findings |
+| [#173](https://github.com/markdlabrecque/composure/issues/173) | Make staticcheck fail the check |
+| [#227](https://github.com/markdlabrecque/composure/issues/227) | Reject Unicode controls before SMTP setting normalization |
+| [#240](https://github.com/markdlabrecque/composure/issues/240) | Remove calendar expiry from actor-attribution test sessions |
+
+### Current work and dispatch hold
+
+Mark requested a stop before taking the next ticket. Finish the current integration ticket #87 under its existing review and publication rules, then pause. No new ticket pickup, correction, review or gate is authorized for the held queue. Existing validation roles may save their results and stop.
+
+| Issue | Recorded status | Remaining work |
+| --- | --- | --- |
+| #87 | Independent review round 3 approved; current-base full gate passed | Reconcile gate receipt inventory, then obtain publication authority, required CI, merge and verified closeout |
+| #132 | First independent review returned a shutdown lifecycle finding | Held for correction and independent review after dispatch resumes |
+| #142 | Current-base cheap checks passed | Held before independent review and full gate |
+| #146 | Current-base validation finished; owner saved results and stopped | Held before independent review and full gate |
+| #108 | Initial cheap checks passed on an earlier base | Held before current-base reconciliation, independent review and full gate |
+
+These five issues remain open and are excluded from the completed count. A passing local check or review does not establish merge or completion.
+
+[#191](https://github.com/markdlabrecque/composure/issues/191) remains open. Coordinate it with the delivered #79/#131 and pending audit consumers before treating those consumers as complete. Recorder documentation and tests must define durability and the state-commit boundary. [#225](https://github.com/markdlabrecque/composure/issues/225) separately tracks the Enable SMTP settings control and successful connection check; completed #85 supplies deployment-secret configuration.
+
+### Settled product decisions
+
+- Upload limits use the lower global/category ceiling: 25 MiB globally, 10 MiB for images and 25 MiB for documents. Fields may tighten limits. Images have ceilings of 40 megapixels and 16,384 pixels per axis before full decoding. #138 and #139 are completed.
+- DOCX validation allows at most 1,000 ZIP entries, 100 MiB total expanded bytes, 25 MiB per entry and 100:1 expansion per entry and overall. Allow Store/Deflate only; reject encryption, macros, symlinks, duplicate or unsafe paths; require valid DOCX OOXML content types and main document entries. #140 is completed.
+- Storage names use lowercase SHA-256 hex plus the canonical extension, hashing images after re-encoding. #141 is completed.
+- Invitations last seven days and password resets one hour, checked against the injected server clock. Newly accepted accounts start with Editor only; administrator access uses #115's administrator-only role-assignment route.
+- SMTP values and credentials come from `.env`; secrets stay out of configuration storage and site exports. Invitation/reset links use trusted `COMPOSURE_PUBLIC_URL` from `.env`, never request Host or forwarded headers.
+
+### Retained completion evidence
+
+The prior snapshot recorded these merge and summary links. Preserve their tested revisions, review counts and exceptions when consulting historical evidence.
 
 | Completed issue | Delivered scope | Merged PR | Merge commit | Completion summary |
 | --- | --- | --- | --- | --- |
@@ -15,30 +104,7 @@ The latest batch is merged into `phase-2`, summarized on GitHub, closed as compl
 
 The summaries preserve review counts, tested revisions and exceptions. #69's local gate history includes a failed browser-prerequisite run followed by one explicitly authorized passing recovery on the unchanged candidate. #137 preserves two intentional Markdown hard breaks under a narrow local whitespace-check exception; its full gate and required CI passed without exception.
 
-GitHub records these 29 original Phase 2 tickets closed: #58, #59, #60, #61, #62, #63, #64, #65, #66, #67, #68, #69, #70, #71, #72, #73, #74, #75, #77, #88, #101, #106, #114, #126, #136, #137, #170, #171 and #172. Related decision issues #189 and #197 are also closed. Do not redispatch completed work. The wave tables below retain the original dependency layout, not a live list of unfinished work.
-
-### Next dependency-ready candidates
-
-These open tickets have closed prerequisites in the lane plan. Before dispatch, verify prerequisite changes are present in the current phase branch and apply the normal scope, ownership and review checks. #81 is the next open ticket on the critical path. Its local worktree already exists at `/home/mark/Projects/worktrees/composure/81`; reconcile its recorded thread/session and evidence before any new dispatch. Worktree existence alone does not establish implementation progress.
-
-| Lane | Issue | Next outcome |
-| --- | --- | --- |
-| Audit package | #79 | Minimal audit recorder interface |
-| Auth package | #111 | CLI operator principal |
-| Mail package | #85 | SMTP relay configuration from deployment secrets |
-| Web sign-in | #76 | Sign-out route |
-| Web guard and CSRF | #81 | Reject unauthenticated admin requests |
-| Web invitations | #89 | Invitation form and token issue |
-| Web reset | #95 | Request-reset form with generic response |
-| CI | #173 | Reconcile acceptance against the strict enforcement already delivered by #172; issue remains open |
-
-#138 has closed ticket prerequisites but remains held for a product decision: reconcile the accepted field-only size/dimension policy with the documented global/category defaults before #138/#139. #140 also needs approved ZIP/OOXML bounds before full DOCX validation. Neither decision was settled by #137.
-
-[#191](https://github.com/markdlabrecque/composure/issues/191) remains open and must be coordinated with #79/#131 before the first audited consumers are treated as complete. Recorder documentation and tests must distinguish development log-line output from durable SQLite recording and define the state-commit boundary.
-
-The completed batch's role handoffs have been removed from the checkout after a verified private archive of their latest contents. GitHub completion summaries above remain the delivery record; historical role evidence is retained outside the checkout under `~/.codex/runtime/ticket-sessions/composure-completed-handoffs/`.
-
-Other reported follow-ups remain separate work: the duplicated but consistent account-email canonicalizer, broader email grammar, SQLite browser-fixture cleanup, and incomplete contrast/manual accessibility checks. This batch does not complete Phase 2 access controls, safe uploads, human security signoff, WCAG conformance or production readiness.
+Historical role evidence remains outside the checkout under `~/.codex/runtime/ticket-sessions/`. Retained summaries distinguish local-gate candidates from CI-tested revisions. This inventory does not establish completion of the remaining Phase 2 access controls, safe-upload integration, automated deployment acceptance, human security signoff, WCAG conformance or production readiness.
 
 ## How to read this
 
@@ -269,7 +335,8 @@ The Argon2id parameter decision is resolved by completed #64 and the [password c
 
 Remaining decisions:
 
-1. Field-only upload limits versus global/category defaults before #138/#139, and ZIP/OOXML bounds before #140.
-2. Logo and colour branding: Phase 2 after #155, or Phase 4.
+1. Logo and colour branding: Phase 2 after #155, or Phase 4.
+
+Upload limits, image ceilings and DOCX bounds are settled above; #138, #139 and #140 are completed.
 
 The former Hetzner-host protection choice is not a Phase 2 question: there is no Phase 2 production/test-host deployment. Host protection and real-host evidence remain deferred release work. Issues #156–#158 are held for human signoff beyond Phase 2; automated auth/roles/uploads checks remain Phase 2 acceptance. The reporter should update the affected review/deploy issue bodies to distinguish automated Debian-harness checks from deferred human signoff and Hetzner evidence. Use the current scope and acceptance rules in this plan and `docs/work_plan.md`; retired role handoffs are historical evidence.
